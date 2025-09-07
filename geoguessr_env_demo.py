@@ -24,14 +24,24 @@ def main() -> None:
     observation, info = env.reset()
     lat = info["gt_lat"]
     lon = info["gt_lon"]
+    guess_lat, guess_lon = 51.506843, -0.113710
     links = info.get("links", [])
     print(f"pano_id={info.get('pano_id')} gt_lat={lat:.6f} gt_lon={lon:.6f} links={len(links)}")
 
     steps = 0
     total_reward = 0.0
     done = False
-    while not done and steps < 40:
-        observation, reward, terminated, truncated, info = env.step(0)
+    while not done and steps < 5:
+        # On the 3th step, click at screen position (x=567, y=256)
+        if steps == 3:
+            action = {"op": "click", "value": [567, 256]}
+        if steps == 4:
+            action = {"op": "answer", "value": [guess_lat, guess_lon]}
+        else:
+            action = {"op": "click", "value": [0, 0]}
+        observation, reward, terminated, truncated, info = env.step(action)
+        print(info)
+        print('---------')
         env.render()
         total_reward += reward
         steps += 1

@@ -109,7 +109,7 @@ def load_large_font(preferred_size: int):
 
 def draw_circles_on_image(image_path: str, links: List[Tuple[float, str]], output_path: str, pano_id: str, *,
                           pano_heading: float = 0.0,
-                          radius: int = 100, fill_color=(255, 0, 0), outline_color=(255, 255, 255), outline_width: int = 2) -> None:
+                          radius: int = 24, fill_color=(255, 0, 0), outline_color=(255, 255, 255), outline_width: int = 2) -> None:
     """
     Draw a circle at the vertical center for each link direction.
     Saves the result to output_path.
@@ -192,7 +192,8 @@ def ensure_directory(path: str) -> None:
 
 def main() -> None:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    metadata_path = os.path.join(project_root, "load", "metadata", "B8Yw_SheqPArDjOk4WL4yw_minimetadata.jsonl")
+    pano_id = "B8Yw_SheqPArDjOk4WL4yw"
+    metadata_path = os.path.join(project_root, "load", "metadata", f"{pano_id}_minimetadata.jsonl")
     images_dir = os.path.join(project_root, "load", "images")
     output_dir = os.path.join(project_root, "load", "markedimages")
 

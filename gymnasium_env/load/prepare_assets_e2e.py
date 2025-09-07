@@ -11,7 +11,7 @@ from pydantic_models import Panorama
 
 from gymnasium_env.load.transform_metadata_to_essential_only import transform_metadata_to_essential_only
 
-NUMBER_OF_PANOS_TO_PROCESS = 25
+NUMBER_OF_PANOS_TO_PROCESS = 9
 
 def make_serializable(obj):
     """Convert non-serializable objects to serializable format"""

@@ -40,21 +40,22 @@ def read_minimetadata_jsonl(jsonl_path: str) -> Dict[str, List[Tuple[float, str]
     return pano_id_to_links
 
 
-def normalize_direction_radians(direction: float) -> float:
+def normalize_direction_radians(direction: float, heading: float = 0.0) -> float:
     """
     Normalize direction to [0, 2π].
     """
     tau = getattr(math, "tau", 2 * math.pi)
-    # Python's modulo works fine for negatives; wrap into [0, tau)
-    wrapped = direction % tau
+    # Adjust by original pano heading and wrap into [0, tau)
+    adjusted = direction + heading + tau
+    wrapped = adjusted % tau
     # Keep exactly tau as tau (we'll clamp x later)
-    if math.isclose(wrapped, 0.0, abs_tol=1e-12) and direction != 0.0:
+    if math.isclose(wrapped, 0.0, abs_tol=1e-12) and adjusted != 0.0:
         # If original was effectively 2π, prefer tau to place on right edge
         return tau
     return wrapped
 
 
-def direction_to_x(direction: float, image_width: int) -> int:
+def direction_to_x(direction: float, image_width: int, heading: float = 0.0) -> int:
     """
     Map a direction in radians to the horizontal pixel coordinate on an
     equirectangular image where:
@@ -63,7 +64,7 @@ def direction_to_x(direction: float, image_width: int) -> int:
     - 2π corresponds to the right edge (x = width - 1)
     """
     tau = getattr(math, "tau", 2 * math.pi)
-    d = normalize_direction_radians(direction)
+    d = normalize_direction_radians(direction, heading=heading)
 
     # Linear mapping across the width.
     # Note: if d == tau, x_float == width; clamp to width - 1 below.
@@ -107,6 +108,7 @@ def load_large_font(preferred_size: int):
 
 
 def draw_circles_on_image(image_path: str, links: List[Tuple[float, str]], output_path: str, pano_id: str, *,
+                          pano_heading: float = 0.0,
                           radius: int = 100, fill_color=(255, 0, 0), outline_color=(255, 255, 255), outline_width: int = 2) -> None:
     """
     Draw a circle at the vertical center for each link direction.
@@ -129,7 +131,7 @@ def draw_circles_on_image(image_path: str, links: List[Tuple[float, str]], outpu
         y = height // 2
 
         for direction, link_pano_id in links:
-            x = direction_to_x(direction, width)
+            x = direction_to_x(direction, width, heading=pano_heading)
             left = x - radius
             top = y - radius
             right = x + radius
@@ -190,7 +192,7 @@ def ensure_directory(path: str) -> None:
 
 def main() -> None:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    metadata_path = os.path.join(project_root, "load", "metadata", "M5uc5VIn-YXCHgVO6qbrpQ_minimetadata.jsonl")
+    metadata_path = os.path.join(project_root, "load", "metadata", "B8Yw_SheqPArDjOk4WL4yw_minimetadata.jsonl")
     images_dir = os.path.join(project_root, "load", "images")
     output_dir = os.path.join(project_root, "load", "markedimages")
 

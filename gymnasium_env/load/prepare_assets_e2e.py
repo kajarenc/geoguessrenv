@@ -11,7 +11,7 @@ from pydantic_models import Panorama
 
 from gymnasium_env.load.transform_metadata_to_essential_only import transform_metadata_to_essential_only
 
-NUMBER_OF_PANOS_TO_PROCESS = 42
+NUMBER_OF_PANOS_TO_PROCESS = 25
 
 def make_serializable(obj):
     """Convert non-serializable objects to serializable format"""
@@ -66,6 +66,7 @@ def bfs(pano_id):
 
 
 def get_nearest_pano_id(lat: float, lon: float) -> str | None:
+    print("IN GET NEAREST PANO ID")
     panos = search_panoramas(lat=lat, lon=lon)
 
     if not panos:
@@ -86,6 +87,7 @@ def get_nearest_pano_id(lat: float, lon: float) -> str | None:
     panos_sorted = sorted(panos, key=sort_key, reverse=True)
 
     print("PANOS SORTED!!!!!!!")
+    print(panos)
     for pano in panos_sorted:
         print(pano.date)
 
@@ -131,7 +133,9 @@ def main():
     # lat, lon = 47.622118, -122.3459565
     # lat, lon = 52.5107515, 13.3768324
     # lat, lon = 52.50980, 13.37654
-    lat, lon = 52.2296973, 20.9847014
+    # lat, lon = 47.6225182,-122.3371727 # GOOD SEATTLE AMAZON OFFIC LOCATION
+    lat, lon = 41.403165, 2.1750084 #Barcelona
+
     prepare_assets_e2e(lat, lon)
 
 

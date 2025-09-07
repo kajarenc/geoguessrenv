@@ -22,9 +22,10 @@ def main() -> None:
 
     env = gym.make(ENV_ID, render_mode="human")
     observation, info = env.reset()
-    print(
-        f"pano_id={info.get('pano_id')} lat={info.get('lat'):.6f} lon={info.get('lon'):.6f} links={len(info.get('links', []))}"
-    )
+    lat = info["gt_lat"]
+    lon = info["gt_lon"]
+    links = info.get("links", [])
+    print(f"pano_id={info.get('pano_id')} gt_lat={lat:.6f} gt_lon={lon:.6f} links={len(links)}")
 
     steps = 0
     total_reward = 0.0

@@ -46,6 +46,9 @@ def normalize_direction_radians(direction: float, heading: float = 0.0) -> float
     """
     tau = getattr(math, "tau", 2 * math.pi)
     # Adjust by original pano heading and wrap into [0, tau)
+
+    d = (direction + tau) % tau
+
     adjusted = direction + heading + tau
     wrapped = adjusted % tau
     # Keep exactly tau as tau (we'll clamp x later)
@@ -192,7 +195,7 @@ def ensure_directory(path: str) -> None:
 
 def main() -> None:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    pano_id = "B8Yw_SheqPArDjOk4WL4yw"
+    pano_id = "moy3EWiKMN8DvB9Zu3kITg"
     metadata_path = os.path.join(project_root, "load", "metadata", f"{pano_id}_minimetadata.jsonl")
     images_dir = os.path.join(project_root, "load", "images")
     output_dir = os.path.join(project_root, "load", "markedimages")

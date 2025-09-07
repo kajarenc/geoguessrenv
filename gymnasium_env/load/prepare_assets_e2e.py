@@ -133,9 +133,9 @@ def main():
     # lat, lon = 47.622118, -122.3459565
     # lat, lon = 52.5107515, 13.3768324
     # lat, lon = 52.50980, 13.37654
-    # lat, lon = 47.6225182,-122.3371727 # GOOD SEATTLE AMAZON OFFIC LOCATION
-    lat, lon = 41.403165, 2.1750084 #Barcelona
-
+    # lat, lon = 47.6225182,-122.3371727 # GOOD SEATTLE AMAZON OFFICE LOCATION
+    # lat, lon = 41.403165, 2.1750084 #Barcelona
+    lat, lon = 51.505852,-0.1244136 # London
     prepare_assets_e2e(lat, lon)
 
 

@@ -1,4 +1,5 @@
 import gymnasium as gym
+import os
 from gymnasium.envs.registration import register
 
 
@@ -20,7 +21,18 @@ def ensure_registered() -> None:
 def main() -> None:
     ensure_registered()
 
-    env = gym.make(ENV_ID, render_mode="human")
+    # Use a temp cache directory next to this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    cache_root = os.path.join(script_dir, "tempcache")
+    env = gym.make(
+        ENV_ID,
+        render_mode="human",
+        config={
+            "cache_root": cache_root,
+            "input_lat": 47.542077,
+            "input_lon": -122.220124,
+        }
+        )
     observation, info = env.reset()
     lat = info["gt_lat"]
     lon = info["gt_lon"]
@@ -34,11 +46,11 @@ def main() -> None:
     while not done and steps < 11:
         # On the 3th step, click at screen position (x=567, y=256)
         if steps == 2:
-            action = {"op": "click", "value": [737, 256]}
+            action = {"op": "click", "click": [737, 256]}
         elif steps == 10:
-            action = {"op": "answer", "value": [guess_lat, guess_lon]}
+            action = {"op": "answer", "answer": [guess_lat, guess_lon]}
         else:
-            action = {"op": "click", "value": [0, 0]}
+            action = {"op": "click", "click": [512, 256]}
         observation, reward, terminated, truncated, info = env.step(action)
         print(info)
         print('---------')

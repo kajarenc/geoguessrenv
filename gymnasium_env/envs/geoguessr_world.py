@@ -8,43 +8,54 @@ import math
 from typing import Dict, List, Optional, Tuple
 from PIL import Image
 
+from gymnasium_env.envs.helpers import get_nearest_pano_id, download_metadata, download_images
+
 
 class GeoGuessrWorldEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 1}
 
-    def __init__(self, render_mode=None, size=5):
-        # Config (MVP: fixed root pano and pre-downloaded assets)
-        self.render_mode = render_mode
-        self.size = size
-        # self.pano_root_id: str = "VYXrP0940UGhMXl5jwzDlQ" # London
-        # self.pano_root_id: str = "B8Yw_SheqPArDjOk4WL4yw"
-        self.pano_root_id: str = "Pb0CAX0KNsSjhP09-nMSwA" # Bellvue
+    def __init__(self, config: Optional[Dict] = None, render_mode=None):
+        # Normalize config
+        cfg = dict(config or {})
+        # Public config (towards spec)
+        self.provider: Optional[str] = cfg.get("provider")
+        self.mode: Optional[str] = cfg.get("mode")  # {online, offline}
+        self.geofence: Optional[Dict] = cfg.get("geofence")
+        self.input_lat: Optional[float] = cfg.get("input_lat")
+        self.input_lon: Optional[float] = cfg.get("input_lon")
+        self.cache_root: Optional[str] = cfg.get("cache_root")
+        self.max_steps: int = int(cfg.get("max_steps", 40))
+        self._initial_seed: Optional[int] = cfg.get("seed")
+        self.rate_limit_qps: Optional[float] = cfg.get("rate_limit_qps")
+        self.max_fetch_retries: Optional[int] = cfg.get("max_fetch_retries")
+        self.min_capture_year: Optional[int] = cfg.get("min_capture_year")
 
-        # Resolve project paths
-        # This file lives at gymnasium_env/envs/geoguessr_world.py
-        # Images are at gymnasium_env/load/images/<pano_id>.jpg
-        # Metadata JSONL is at gymnasium_env/load/metadata/<root>_minimetadata.jsonl
-        env_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(env_dir)
-        self.images_dir = os.path.join(project_root, "load", "images")
-        self.metadata_path = os.path.join(
-            project_root, "load", "metadata", f"{self.pano_root_id}_minimetadata.jsonl"
-        )
+        # Rendering config
+        self.render_mode = render_mode
 
         # Controls (click mapping)
-        self.arrow_hit_radius_px: int = 24
-        self.arrow_min_conf: float = 0.0
+        self.arrow_hit_radius_px: int = int(cfg.get("arrow_hit_radius_px", 24))
+        self.arrow_min_conf: float = float(cfg.get("arrow_min_conf", 0.0))
 
-        # Load metadata graph into memory
-        self._pano_graph: Dict[str, Dict] = self._load_minimetadata(self.metadata_path)
+        # Root pano selection (MVP: fixed root pano and pre-downloaded assets)
+        # self.pano_root_id: str = "VYXrP0940UGhMXl5jwzDlQ" # London
+        # self.pano_root_id: str = "B8Yw_SheqPArDjOk4WL4yw"
+        self.pano_root_id: Optional[str] = None
 
-        # Determine observation space from root image
-        root_image_path = os.path.join(self.images_dir, f"{self.pano_root_id}.jpg")
-        with Image.open(root_image_path) as img:
-            img = img.convert("RGB")
-            width, height = img.size
-        self._image_width = width
-        self._image_height = height
+        # Resolve project paths using cache_root when provided
+        # images -> <cache_root>/images; metadata -> <cache_root>/metadata
+        env_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(env_dir)
+        cache_root = self.cache_root or os.path.join(project_root, "load")
+        self.images_dir = os.path.join(cache_root, "images")
+        self.metadata_dir = os.path.join(cache_root, "metadata")
+
+        # Defer loading metadata and reading image sizes to reset() after downloads
+        self._pano_graph: Dict[str, Dict] = {}
+        # Provide sensible defaults for dimensions until reset() initializes them
+        self._image_width = 1024
+        self._image_height = 512
+
         self.observation_space = spaces.Box(
             low=0,
             high=255,
@@ -52,17 +63,28 @@ class GeoGuessrWorldEnv(gym.Env):
             dtype=np.uint8,
         )
         # Action space
-        # op: 0 = click, 1 = answer
-        # value: two floats; for click -> (x, y) in pixels (will be clamped), for answer -> (lat, lon)
+        # Two actions:
+        # - op == 0: click → value in pixels (x, y) with explicit bounds [0,1024] x [0,512]
+        # - op == 1: answer → value is (lat, lon) with standard bounds [-90,90] x [-180,180]
+        self._click_low = np.array([0, 0], dtype=np.int32)
+        self._click_high = np.array([1024, 512], dtype=np.int32)
+        click_space = spaces.Box(
+            low=self._click_low,
+            high=self._click_high,
+            shape=(2,),
+            dtype=np.int32,
+        )
+        answer_space = spaces.Box(
+            low=np.array([-90.0, -180.0], dtype=np.float32),
+            high=np.array([90.0, 180.0], dtype=np.float32),
+            shape=(2,),
+            dtype=np.float32,
+        )
         self.action_space = spaces.Dict(
             {
                 "op": spaces.Discrete(2),
-                "value": spaces.Box(
-                    low=np.array([-90.0, -180.0], dtype=np.float32),
-                    high=np.array([90.0, 180.0], dtype=np.float32),
-                    shape=(2,),
-                    dtype=np.float32,
-                ),
+                "click": click_space,
+                "answer": answer_space,
             }
         )
 
@@ -95,11 +117,27 @@ class GeoGuessrWorldEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         # We need the following line to seed self.np_random
+        if seed is None and self._initial_seed is not None:
+            seed = int(self._initial_seed)
         super().reset(seed=seed)
+
+        # TODO[Karen] not choose pano_root_id optimistically, first traverse graph of linked panos,
+        # TODO[Karen] and choose that pano if it satisfies the criteria of being a part of connected component only.
+        self.pano_root_id  = get_nearest_pano_id(self.input_lat, self.input_lon)
+        # Ensure directories exist
+        os.makedirs(self.metadata_dir, exist_ok=True)
+        os.makedirs(self.images_dir, exist_ok=True)
+        download_metadata(self.pano_root_id, self.metadata_dir)
+        download_images(self.pano_root_id, self.metadata_dir ,self.images_dir)
+
+        # Now that metadata is available, load the graph
+        metadata_path = os.path.join(self.metadata_dir, f"{self.pano_root_id}_mini.jsonl")
+        self._pano_graph = self._load_minimetadata(metadata_path)
+
         self._steps = 0
         # Initialize to fixed root pano
         self._set_current_pano(self.pano_root_id)
-        # Initialize camera heading to current pano heading if available
+        # Initialize camera heading to the current pano heading if available
         node = self._pano_graph.get(self.current_pano_id, {})
         heading = node.get("heading")
         if isinstance(heading, (int, float)):
@@ -131,6 +169,10 @@ class GeoGuessrWorldEnv(gym.Env):
             reward = self._compute_answer_reward(guess_lat, guess_lon)
             terminated = True
 
+        # Truncation if exceeding max_steps (unless already terminated)
+        if not terminated and self.max_steps is not None and self._steps >= int(self.max_steps):
+            truncated = True
+
         obs = self._get_observation()
         info = self._get_info()
         if op == 1:
@@ -144,10 +186,12 @@ class GeoGuessrWorldEnv(gym.Env):
         return obs, reward, terminated, truncated, info
 
     # --- Rendering ---
-    def render(self):
-        if self.render_mode == "rgb_array":
+    def render(self, mode=None):
+        # Allow override via argument; fall back to configured render_mode
+        render_mode = mode if mode is not None else self.render_mode
+        if render_mode == "rgb_array":
             return self._get_observation()
-        if self.render_mode == "human":
+        if render_mode == "human":
             if self._screen is None:
                 pygame.init()
                 self._screen = pygame.display.set_mode((self._image_width, self._image_height))
@@ -375,7 +419,9 @@ class GeoGuessrWorldEnv(gym.Env):
         Returns a pair (op, value) where:
         - op: 0 for click, 1 for answer
         - value: (x, y) for click; (lat, lon) for answer
-        Accepts either a dict {"op": int or str, "value": [a,b]} or already-normalized tuple.
+        Accepts either of:
+          - {"op": int|str, "value": [a,b]}  (backward compatible)
+          - {"op": int|str, "click": [x,y], "answer": [lat,lon]}  (new explicit spaces)
         """
         if isinstance(action, dict):
             op = action.get("op")
@@ -383,16 +429,37 @@ class GeoGuessrWorldEnv(gym.Env):
                 op_norm = 0 if op == "click" else 1
             else:
                 op_norm = int(op)
-            val = action.get("value", [0, 0])
-            if isinstance(val, (list, tuple)) and len(val) == 2:
-                v0 = float(val[0])
-                v1 = float(val[1])
+            # Prefer new explicit keys if present
+            if op_norm == 0 and "click" in action and isinstance(action.get("click"), (list, tuple)):
+                val = action.get("click", [0, 0])
+            elif op_norm == 1 and "answer" in action and isinstance(action.get("answer"), (list, tuple)):
+                val = action.get("answer", [0, 0])
             else:
-                v0, v1 = 0.0, 0.0
-            # Validate/clamp pixels for click based on actual image size
+                val = action.get("value", [0, 0])
+
+            if isinstance(val, (list, tuple)) and len(val) == 2:
+                if op_norm == 0:
+                    # click expects ints
+                    v0 = int(val[0])
+                    v1 = int(val[1])
+                else:
+                    v0 = float(val[0])
+                    v1 = float(val[1])
+            else:
+                if op_norm == 0:
+                    v0, v1 = 0, 0
+                else:
+                    v0, v1 = 0.0, 0.0
+
+            # Validate/clamp based on declared spaces
             if op_norm == 0:
-                v0 = max(0.0, min(float(self._image_width - 1), v0))
-                v1 = max(0.0, min(float(self._image_height - 1), v1))
+                # click: bounds [0,1024] x [0,512]
+                v0 = max(int(self._click_low[0]), min(int(self._click_high[0]), v0))
+                v1 = max(int(self._click_low[1]), min(int(self._click_high[1]), v1))
+            else:
+                # answer: latitude/longitude bounds
+                v0 = max(-90.0, min(90.0, v0))
+                v1 = max(-180.0, min(180.0, v1))
             return op_norm, (v0, v1)
         # Fallback: treat as no-op click center
         return 0, (float(self._image_width // 2), float(self._image_height // 2))

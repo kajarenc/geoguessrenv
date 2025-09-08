@@ -66,7 +66,6 @@ def bfs(pano_id):
 
 
 def get_nearest_pano_id(lat: float, lon: float) -> str | None:
-    print("IN GET NEAREST PANO ID")
     panos = search_panoramas(lat=lat, lon=lon)
 
     if not panos:
@@ -86,8 +85,6 @@ def get_nearest_pano_id(lat: float, lon: float) -> str | None:
     # Sort by date descending (latest first)
     panos_sorted = sorted(panos, key=sort_key, reverse=True)
 
-    print("PANOS SORTED!!!!!!!")
-    print(panos)
     for pano in panos_sorted:
         print(pano.date)
 

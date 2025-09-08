@@ -40,21 +40,41 @@ def read_minimetadata_jsonl(jsonl_path: str) -> Dict[str, List[Tuple[float, str]
     return pano_id_to_links
 
 
+def read_headings_jsonl(jsonl_path: str) -> Dict[str, float]:
+    """
+    Read a JSONL file and return a mapping from panorama_id -> heading (radians).
+    If a pano has no heading, it will be omitted from the map.
+    """
+    pano_id_to_heading: Dict[str, float] = {}
+
+    with open(jsonl_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            pano_id = data.get("id")
+            heading = data.get("heading")
+            if isinstance(pano_id, str) and isinstance(heading, (int, float)):
+                pano_id_to_heading[pano_id] = float(heading)
+
+    return pano_id_to_heading
+
+
 def normalize_direction_radians(direction: float, heading: float = 0.0) -> float:
     """
     Normalize direction to [0, 2π].
     """
     tau = getattr(math, "tau", 2 * math.pi)
     # Adjust by original pano heading and wrap into [0, tau)
-
-    d = (direction + tau) % tau
-
-    adjusted = direction + heading + tau
+    print(f"DIRECTION: {direction}, HEADING:{heading}")
+    adjusted = direction + heading
     wrapped = adjusted % tau
     # Keep exactly tau as tau (we'll clamp x later)
     if math.isclose(wrapped, 0.0, abs_tol=1e-12) and adjusted != 0.0:
         # If original was effectively 2π, prefer tau to place on right edge
         return tau
+    print(f"WRapped: {wrapped:.6f}")
     return wrapped
 
 
@@ -134,7 +154,15 @@ def draw_circles_on_image(image_path: str, links: List[Tuple[float, str]], outpu
         y = height // 2
 
         for direction, link_pano_id in links:
-            x = direction_to_x(direction, width, heading=pano_heading)
+            # Use the exact normalized direction for both x and label to keep them identical
+            d_norm = normalize_direction_radians(direction, heading=pano_heading)
+            tau = getattr(math, "tau", 2 * math.pi)
+            x_float = (d_norm / tau) * float(width)
+            x = int(round(x_float))
+            if x < 0:
+                x = 0
+            if x >= width:
+                x = width - 1
             left = x - radius
             top = y - radius
             right = x + radius
@@ -154,8 +182,8 @@ def draw_circles_on_image(image_path: str, links: List[Tuple[float, str]], outpu
                         draw.ellipse([box[0] - ow, box[1] - ow, box[2] + ow, box[3] + ow], outline=outline_color)
                 draw.ellipse(box, fill=fill_color)
 
-            # Prepare label text "<direction> rad | <link_pano_id>"
-            label = f"{direction:.3f} rad | {link_pano_id}"
+            # Prepare label text with the same normalized angle used for x
+            label = f"{d_norm:.3f} rad | {link_pano_id}"
             padding = 4
             # Compute text size
             tb = draw.textbbox((0, 0), label, font=font, stroke_width=2)
@@ -195,7 +223,7 @@ def ensure_directory(path: str) -> None:
 
 def main() -> None:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    pano_id = "moy3EWiKMN8DvB9Zu3kITg"
+    pano_id = "DyDhU3ixcGl-9BT_SNzHTQ"
     metadata_path = os.path.join(project_root, "load", "metadata", f"{pano_id}_minimetadata.jsonl")
     images_dir = os.path.join(project_root, "load", "images")
     output_dir = os.path.join(project_root, "load", "markedimages")
@@ -203,6 +231,7 @@ def main() -> None:
     ensure_directory(output_dir)
 
     pano_to_links = read_minimetadata_jsonl(metadata_path)
+    pano_to_heading = read_headings_jsonl(metadata_path)
 
     total_processed = 0
     total_missing = 0
@@ -215,7 +244,8 @@ def main() -> None:
 
         dst_image = os.path.join(output_dir, f"{pano_id}.jpg")
         try:
-            draw_circles_on_image(src_image, links, dst_image, pano_id)
+            heading = float(pano_to_heading.get(pano_id, 0.0))
+            draw_circles_on_image(src_image, links, dst_image, pano_id, pano_heading=heading)
             total_processed += 1
         except Exception as e:
             # Skip problematic images but continue processing others

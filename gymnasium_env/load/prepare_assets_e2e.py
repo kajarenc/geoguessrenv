@@ -135,7 +135,10 @@ def main():
     # lat, lon = 52.50980, 13.37654
     # lat, lon = 47.6225182,-122.3371727 # GOOD SEATTLE AMAZON OFFICE LOCATION
     # lat, lon = 41.403165, 2.1750084 #Barcelona
-    lat, lon = 51.505852,-0.1244136 # London
+    # lat, lon = 51.505852,-0.1244136 # London
+    # lat, lon = 51.5594231, -0.175539 #Christ Church
+    #lat, lon = 47.620077,-122.198071# Good Beluvue position
+    lat, lon = 47.6323175,-122.3638804
     prepare_assets_e2e(lat, lon)
 
 

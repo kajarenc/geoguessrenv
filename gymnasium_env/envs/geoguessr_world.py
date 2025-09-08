@@ -10,14 +10,15 @@ from PIL import Image
 
 
 class GeoGuessrWorldEnv(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 1}
 
     def __init__(self, render_mode=None, size=5):
         # Config (MVP: fixed root pano and pre-downloaded assets)
         self.render_mode = render_mode
         self.size = size
-        self.pano_root_id: str = "moy3EWiKMN8DvB9Zu3kITg" # London
+        # self.pano_root_id: str = "VYXrP0940UGhMXl5jwzDlQ" # London
         # self.pano_root_id: str = "B8Yw_SheqPArDjOk4WL4yw"
+        self.pano_root_id: str = "Pb0CAX0KNsSjhP09-nMSwA" # Bellvue
 
         # Resolve project paths
         # This file lives at gymnasium_env/envs/geoguessr_world.py
@@ -271,7 +272,7 @@ class GeoGuessrWorldEnv(gym.Env):
         for link in self.current_links:
             direction = float(link.get("direction", 0.0))
             link_id = str(link.get("id"))
-            x = self._direction_to_x(direction, self._image_width)
+            x = self._direction_to_x(direction, float(pano_heading), self._image_width)
             y = self._image_height // 2
             # rel heading in degrees for tie-breakers: how far from current heading
             abs_heading = self._normalize_angle(direction + pano_heading)
@@ -338,9 +339,9 @@ class GeoGuessrWorldEnv(gym.Env):
         return d
 
     @staticmethod
-    def _direction_to_x(direction: float, image_width: int) -> int:
+    def _direction_to_x(direction: float, heading: float, image_width: int) -> int:
         tau = getattr(math, "tau", 2 * math.pi)
-        d = (direction + tau) % tau
+        d = (direction + heading) % tau
         x_float = (d / tau) * float(image_width)
         x = int(round(x_float))
         if x < 0:

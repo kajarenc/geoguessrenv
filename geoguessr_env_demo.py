@@ -31,11 +31,11 @@ def main() -> None:
     steps = 0
     total_reward = 0.0
     done = False
-    while not done and steps < 5:
+    while not done and steps < 11:
         # On the 3th step, click at screen position (x=567, y=256)
-        if steps == 3:
-            action = {"op": "click", "value": [567, 256]}
-        if steps == 4:
+        if steps == 2:
+            action = {"op": "click", "value": [737, 256]}
+        elif steps == 10:
             action = {"op": "answer", "value": [guess_lat, guess_lon]}
         else:
             action = {"op": "click", "value": [0, 0]}

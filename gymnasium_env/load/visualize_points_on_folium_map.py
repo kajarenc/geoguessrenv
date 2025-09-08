@@ -148,7 +148,7 @@ def visualize_points_on_map(jsonl_file_path: str, output_html_path: str = None):
 
 if __name__ == "__main__":
     # Path to the metadata file
-    root_pano_id = "moy3EWiKMN8DvB9Zu3kITg"
+    root_pano_id = "DyDhU3ixcGl-9BT_SNzHTQ"
     metadata_file = f"metadata/{root_pano_id}_minimetadata.jsonl"
 
     # Check if file exists

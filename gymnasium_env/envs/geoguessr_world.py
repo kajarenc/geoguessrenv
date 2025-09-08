@@ -281,6 +281,14 @@ class GeoGuessrWorldEnv(gym.Env):
                     if isinstance(link_id, str) and isinstance(direction, (int, float)):
                         links.append({"id": link_id, "direction": float(direction)})
                 graph[pano_id] = {"lat": lat, "lon": lon, "heading": heading, "links": links}
+        # Prune links pointing to non-existent nodes
+        valid_ids = set(graph.keys())
+        for node in graph.values():
+            raw_links = node.get("links", []) or []
+            node["links"] = [
+                l for l in raw_links
+                if isinstance(l, dict) and isinstance(l.get("id"), str) and l["id"] in valid_ids
+            ]
         return graph
 
     def _set_current_pano(self, pano_id: str) -> None:

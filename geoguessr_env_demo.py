@@ -24,13 +24,15 @@ def main() -> None:
     # Use a temp cache directory next to this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
     cache_root = os.path.join(script_dir, "tempcache")
+
+    input_lat, input_lon = 51.481610,-0.163400
     env = gym.make(
         ENV_ID,
         render_mode="human",
         config={
             "cache_root": cache_root,
-            "input_lat": 47.542077,
-            "input_lon": -122.220124,
+            "input_lat": input_lat,
+            "input_lon": input_lon,
         }
         )
     observation, info = env.reset()

@@ -1,33 +1,44 @@
-# Gymnasium Examples
-Some simple examples of Gymnasium environments and wrappers.
-For some explanations of these examples, see the [Gymnasium documentation](https://gymnasium.farama.org).
+# Gymnasium Env + GeoGuessr-like Environment
 
-### Environments
-This repository hosts the examples that are shown [on the environment creation documentation](https://gymnasium.farama.org/tutorials/gymnasium_basics/environment_creation/).
-- `GridWorldEnv`: Simplistic implementation of gridworld environment
-
-### Wrappers
-This repository hosts the examples that are shown [on wrapper documentation](https://gymnasium.farama.org/api/wrappers/).
-- `ClipReward`: A `RewardWrapper` that clips immediate rewards to a valid range
-- `DiscreteActions`: An `ActionWrapper` that restricts the action space to a finite subset
-- `RelativePosition`: An `ObservationWrapper` that computes the relative position between an agent and a target
-- `ReacherRewardWrapper`: Allow us to weight the reward terms for the reacher environment
-
-### Contributing
-If you would like to contribute, follow these steps:
-- Fork this repository
-- Clone your fork
-- Set up pre-commit via `pre-commit install`
-
-PRs may require accompanying PRs in [the documentation repo](https://github.com/Farama-Foundation/Gymnasium/tree/main/docs).
-
+This repo contains custom Gymnasium environments and wrappers, including a GeoGuessr-like panorama navigation environment and an OpenAI-powered base agent.
 
 ## Installation
 
-To install your new environment, run the following commands:
-
-```{shell}
-cd gymnasium_env
-pip install -e .
+```bash
+uv pip install -e .
 ```
+
+## Demos
+
+- `geoguessr_env_demo.py`: Manually interact with the GeoGuessr-like environment.
+
+## OpenAI Agent Runner
+
+Run an OpenAI-powered base agent that uses a vision model to navigate and answer with lat/lon.
+
+Requirements:
+- Set `OPENAI_API_KEY` in your environment.
+
+You can also place it in a `.env` file in the project root:
+
+```bash
+cp .env.example .env
+echo 'OPENAI_API_KEY=sk-...' >> .env
+```
+
+Example:
+
+```bash
+export OPENAI_API_KEY=sk-...
+uv run python scripts/run_openai_agent.py --render --model gpt-4o --max_nav_steps 40 --image_width 1024 --image_height 512
+```
+
+Arguments:
+- `--model`: OpenAI vision model (default `gpt-4o`).
+- `--max_nav_steps`: Maximum navigation steps before answering (default `40`).
+- `--image_width/--image_height`: Image size sent to the model (defaults `1024x512`).
+- `--input_lat/--input_lon`: Seed location for fetching nearby panoramas.
+- `--cache_root`: Where the environment stores images/metadata (defaults to `tempcache`).
+- `--cache_dir`: Optional local cache directory for agent responses.
+- `--render`: Show a Pygame window while running.
 

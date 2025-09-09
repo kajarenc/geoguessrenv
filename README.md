@@ -6,7 +6,7 @@ This repo contains custom Gymnasium environments and wrappers, including a GeoGu
 
 ```bash
 # 1) Clone the repo
-git clone https://github.com/<your-org-or-user>/geoguessrenv.git
+git clone https://github.com/kajarenc/geoguessrenv.git
 cd geoguessrenv
 
 # 2) Create & activate a virtual environment for this project
@@ -24,14 +24,9 @@ cp .env.example .env
 uv run python geoguessr_env_demo.py
 
 # 5b) Run the OpenAI agent (requires OPENAI_API_KEY)
-uv run python scripts/run_openai_agent.py --render --model gpt-4o
+ uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 20 --input_lat 47.618566 --input_lon -122.354386 --render
 ```
 
-## Installation
-
-```bash
-uv pip install -e .
-```
 
 ## Demos
 
@@ -55,7 +50,7 @@ Example:
 
 ```bash
 export OPENAI_API_KEY=sk-...
-uv run python scripts/run_openai_agent.py --render --model gpt-4o --max_nav_steps 40 --image_width 1024 --image_height 512
+ uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 20 --input_lat 47.618566 --input_lon -122.354386 --render
 ```
 
 Arguments:

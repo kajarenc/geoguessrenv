@@ -123,7 +123,7 @@ class GeoGuessrWorldEnv(gym.Env):
 
         # TODO[Karen] not choose pano_root_id optimistically, first traverse graph of linked panos,
         # TODO[Karen] and choose that pano if it satisfies the criteria of being a part of connected component only.
-        self.pano_root_id  = get_nearest_pano_id(self.input_lat, self.input_lon)
+        self.pano_root_id  = get_nearest_pano_id(self.input_lat, self.input_lon, self.metadata_dir)
         # Ensure directories exist
         os.makedirs(self.metadata_dir, exist_ok=True)
         os.makedirs(self.images_dir, exist_ok=True)

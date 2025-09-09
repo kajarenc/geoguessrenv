@@ -14,30 +14,72 @@ from gymnasium_env.envs.pydantic_models import Panorama, PanoramaLink
 NUMBER_OF_PANOS_TO_PROCESS = 8
 
 
-def get_nearest_pano_id(lat: float, lon: float) -> str | None:
+def get_nearest_pano_id(lat: float, lon: float, metadata_dir: str | None = None) -> str | None:
+    """Return nearest panorama id for given coordinates with optional file cache.
+
+    If ``metadata_dir`` is provided, a JSON cache file ``nearest_pano_cache.json``
+    will be used to store and retrieve previously resolved pano ids keyed by
+    rounded coordinates. This avoids repeated network calls and enables
+    deterministic offline replays for identical inputs.
+    """
+    cache_path = None
+    cache_key = f"{round(float(lat), 6)},{round(float(lon), 6)}"
+    cache_data: dict[str, str | None] = {}
+
+    if isinstance(metadata_dir, str) and metadata_dir:
+        try:
+            os.makedirs(metadata_dir, exist_ok=True)
+        except Exception:
+            pass
+        cache_path = os.path.join(metadata_dir, "nearest_pano_cache.json")
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        cache_data = loaded
+            except Exception:
+                # Corrupt cache: ignore and rebuild lazily
+                cache_data = {}
+
+        if cache_key in cache_data:
+            return cache_data.get(cache_key)
+
+    # Cache miss or no cache directory supplied → perform network lookup
     panos = search_panoramas(lat=lat, lon=lon)
 
     if not panos:
-        return None
+        result: str | None = None
+    else:
+        def sort_key(pano):
+            ds = getattr(pano, "date", None)
+            if isinstance(ds, str):
+                try:
+                    year_str, month_str = ds.split("-")
+                    return (int(year_str), int(month_str))
+                except Exception:
+                    pass
+            # Put undated or malformed entries at the beginning (they'll be lowest when sorting desc)
+            return (-1, -1)
 
-    def sort_key(pano):
-        ds = getattr(pano, "date", None)
-        if isinstance(ds, str):
-            try:
-                year_str, month_str = ds.split("-")
-                return (int(year_str), int(month_str))
-            except Exception:
-                pass
-        # Put undated or malformed entries at the beginning (they'll be lowest when sorting desc)
-        return (-1, -1)
+        # Sort by date descending (latest first)
+        panos_sorted = sorted(panos, key=sort_key, reverse=True)
 
-    # Sort by date descending (latest first)
-    panos_sorted = sorted(panos, key=sort_key, reverse=True)
+        for pano in panos_sorted:
+            print(pano.date)
 
-    for pano in panos_sorted:
-        print(pano.date)
+        result = panos_sorted[0].pano_id
 
-    return panos_sorted[0].pano_id
+    # Persist into cache if applicable
+    if cache_path is not None:
+        try:
+            cache_data[cache_key] = result
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(cache_data, f, ensure_ascii=False)
+        except Exception:
+            pass
+
+    return result
 
 
 def bfs(pano_id, metadata_dir: str):
@@ -68,12 +110,30 @@ def bfs(pano_id, metadata_dir: str):
 
 
 def download_metadata(root_pano_id: str, metadata_dir: str):
-    print(f"Start BFS for root pano {root_pano_id} metadata scraping...")
-    bfs(root_pano_id, metadata_dir)
-    transform_metadata_to_essential_only(
-        input_file=f"{metadata_dir}/{root_pano_id}.jsonl",
-        output_file=f"{metadata_dir}/{root_pano_id}_mini.jsonl"
-    )
+    raw_path = f"{metadata_dir}/{root_pano_id}.jsonl"
+    mini_path = f"{metadata_dir}/{root_pano_id}_mini.jsonl"
+
+    raw_exists = os.path.exists(raw_path)
+    mini_exists = os.path.exists(mini_path)
+
+    if raw_exists and mini_exists:
+        print(f"Metadata already cached for {root_pano_id}; skipping BFS and transform.")
+        return
+
+    if not raw_exists:
+        print(f"Start BFS for root pano {root_pano_id} metadata scraping...")
+        bfs(root_pano_id, metadata_dir)
+    else:
+        print(f"Raw metadata exists for {root_pano_id}; skipping BFS.")
+
+    if not mini_exists:
+        print(f"Transform raw metadata to essential-only for {root_pano_id}...")
+        transform_metadata_to_essential_only(
+            input_file=raw_path,
+            output_file=mini_path
+        )
+    else:
+        print(f"Mini metadata exists for {root_pano_id}; skipping transform.")
 
 
 def download_images(root_pano_id: str, metadata_dir: str, images_dir: str):

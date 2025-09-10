@@ -162,11 +162,13 @@ class GeoGuessrWorldEnv(gym.Env):
         if op == 0:
             # click: value is (x, y) pixels
             x, y = value
+            print(f"CLICK: x: {x}, y: {y}")
             self._handle_click(x, y)
         elif op == 1:
             # answer: value is (lat, lon)
             guess_lat, guess_lon = value
             reward = self._compute_answer_reward(guess_lat, guess_lon)
+            print(f"ANSWER: {guess_lat}, {guess_lon}")
             terminated = True
 
         # Truncation if exceeding max_steps (unless already terminated)
@@ -183,6 +185,7 @@ class GeoGuessrWorldEnv(gym.Env):
             )
             info["distance_km"] = distance_km
             info["score"] = reward
+            info["steps"] = self._steps
         return obs, reward, terminated, truncated, info
 
     # --- Rendering ---

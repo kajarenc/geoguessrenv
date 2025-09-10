@@ -48,24 +48,28 @@ class OpenAIVisionAgent(BaseAgent):
             return action
 
         # Build messages
-        b64_image = encode_image_to_jpeg_base64(observation, quality=85)
+        b64_image = encode_image_to_jpeg_base64(observation, quality=95)
         system_prompt = (
             "You are navigating Street View-like panoramas. You can either click a link to move "
             "(by outputting the exact provided screen_xy) or answer with final latitude/longitude. "
             "Output ONLY a JSON object matching this schema: {\"op\": \"click\"|\"answer\", \"click\": {\"x\": int, \"y\": int}, \"answer\": {\"lat\": float, \"lon\": float}}. "
-            "Do not include any additional keys or text. Prefer navigating until confident, but never exceed max_steps."
+            "Do not include any additional keys or text."
         )
 
         link_list_str = json.dumps([
             {"id": l.get("id"), "heading_deg": l.get("heading_deg"), "screen_xy": l.get("screen_xy")}
             for l in links
         ])
+        force_answer = meta["max_steps"] - meta["steps"] <= 1
         user_text = (
-            f"pano_id={meta['pano_id']} steps={meta['steps']} max_steps={meta['max_steps']} heading_deg={meta['heading_deg']}\n"
+            f"pano_id={meta['pano_id']} **steps={meta['steps']}** max_steps={meta['max_steps']} heading_deg={meta['heading_deg']}\n"
             f"links={link_list_str}\n"
-            "Rules: To move, choose a link and click exactly its screen_xy center. If you are confident of the location, answer with lat/lon."
+            "Rules: To move, choose a link and click exactly its screen_xy center."
+            "Answer with lat/lon for final answer. "
         )
-
+        if force_answer:
+            user_text += "You MUST return answer this time!!!"
+        print("USER TEXT: ", user_text, "\n")
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
             {
@@ -82,6 +86,7 @@ class OpenAIVisionAgent(BaseAgent):
 
         response = self._chat_completions(messages)
         action = self._parse_action_or_fallback(response, links)
+        print("ACTION: ", action, "\n")
 
         if self.config.cache_dir:
             cache_put(self.config.cache_dir, fingerprint, response)

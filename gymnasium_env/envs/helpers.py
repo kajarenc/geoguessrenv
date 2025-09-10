@@ -89,7 +89,6 @@ def bfs(pano_id, metadata_dir: str):
     number_of_processed_panos = 0
     with open(f"{metadata_dir}/{pano_id}.jsonl", "w") as pano_f:
         while queue and number_of_processed_panos < NUMBER_OF_PANOS_TO_PROCESS:
-            print("IN LOOP")
             current_pano_id = queue.pop(0)
 
             if current_pano_id not in visited:

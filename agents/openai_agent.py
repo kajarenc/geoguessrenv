@@ -52,6 +52,7 @@ class OpenAIVisionAgent(BaseAgent):
         system_prompt = (
             "You are navigating Street View-like panoramas. You can either click a link to move "
             "(by outputting the exact provided screen_xy) or answer with final latitude/longitude. "
+            "If you have a good guess, always return an answer."
             "Output ONLY a JSON object matching this schema: {\"op\": \"click\"|\"answer\", \"click\": {\"x\": int, \"y\": int}, \"answer\": {\"lat\": float, \"lon\": float}}. "
             "Do not include any additional keys or text."
         )

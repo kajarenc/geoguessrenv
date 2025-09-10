@@ -19,7 +19,10 @@ Finally, I use `streetview` again to get the panorama images.
 An important note is that both `streetview` and `streetlevel` do not use the Google Street View API to get data;
 instead, they make calls to the Google Maps website, which could be blocked by Google if used excessively.
 
-After the data is loaded in `reset`, I build a graph of panoramas that are connected to each other. 
+After the data is loaded in `reset`, I1 build a graph of panoramas that are connected to each other and start an episode.
+
+Currently the env pulls data only from the Google street view, but [sk-zk/streetlevel](https://github.com/sk-zk/streetlevel?tab=readme-ov-file#functionality-overview) 
+allows pulling data from other providers, like Yandex Panorama or Bing Streetside.
 
 
 ### Things to improve
@@ -41,5 +44,6 @@ After the data is loaded in `reset`, I build a graph of panoramas that are conne
 ### Plan for the next steps
  - Add Python tests to verify working functionality.
  - Implement sampling according to the task description.
+ - Implement session reply functionality and result writing.
  - Write a base agent and rewrite the OpenAI agent.
  - Make asset loading more robust; handle errors when an image is malformed, when there are no links in the image, etc.

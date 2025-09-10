@@ -13,7 +13,7 @@ class AgentAction:
 
 @dataclass
 class AgentConfig:
-    model: str = "gpt-4o"
+    model: str = "gpt-5"
     temperature: float = 0.0
     max_nav_steps: int = 20
     image_width: int = 1024

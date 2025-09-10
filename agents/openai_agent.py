@@ -60,7 +60,7 @@ class OpenAIVisionAgent(BaseAgent):
             {"id": l.get("id"), "heading_deg": l.get("heading_deg"), "screen_xy": l.get("screen_xy")}
             for l in links
         ])
-        force_answer = meta["max_steps"] - meta["steps"] <= 1
+        force_answer = meta["max_steps"] - meta["steps"] <= 3
         user_text = (
             f"pano_id={meta['pano_id']} **steps={meta['steps']}** max_steps={meta['max_steps']} heading_deg={meta['heading_deg']}\n"
             f"links={link_list_str}\n"

@@ -50,7 +50,7 @@ Example:
 
 ```bash
 export OPENAI_API_KEY=sk-...
- uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 20 --input_lat 47.618566 --input_lon -122.354386 --render
+uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 20 --input_lat 47.618566 --input_lon -122.354386 --render
 ```
 
 Arguments:

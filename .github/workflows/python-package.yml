@@ -11,7 +11,7 @@ on:
 
 jobs:
   build:
-
+    
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -31,7 +31,12 @@ jobs:
     - name: Install dependencies
       run: |
         uv sync
-        uv add --dev flake8 pytest
+    - name: Lint with ruff
+      run: |
+        uv run ruff check .
+    - name: Check formatting with ruff
+      run: |
+        uv run ruff format --check .
     - name: Test with pytest
       run: |
         uv run pytest

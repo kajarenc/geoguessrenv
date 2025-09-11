@@ -157,7 +157,10 @@ class OpenAIVisionAgent(BaseAgent):
                         )
                         if name == "click" and args is not None:
                             model = ClickParams.model_validate_json(args)
-                            return {"op": "click", "click": {"x": model.x, "y": model.y}}
+                            return {
+                                "op": "click",
+                                "click": {"x": model.x, "y": model.y},
+                            }
                         if name == "answer" and args is not None:
                             model = AnswerParams.model_validate_json(args)
                             return {

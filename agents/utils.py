@@ -26,7 +26,9 @@ def compute_image_hash(np_image) -> str:
     return h.hexdigest()
 
 
-def compute_prompt_fingerprint(image_hash: str, links: List[Dict[str, Any]], meta: Dict[str, Any]) -> str:
+def compute_prompt_fingerprint(
+    image_hash: str, links: List[Dict[str, Any]], meta: Dict[str, Any]
+) -> str:
     payload = {
         "image": image_hash,
         "links": links,
@@ -59,5 +61,3 @@ def cache_put(cache_dir: str, key: str, value: Dict[str, Any]) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(value, f, ensure_ascii=False)
     os.replace(tmp, path)
-
-

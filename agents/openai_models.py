@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -27,5 +27,3 @@ class SubmitAction(BaseModel):
         if self.op == "answer" and self.answer is None:
             raise ValueError("'answer' object must be provided when op=='answer'")
         return self
-
-

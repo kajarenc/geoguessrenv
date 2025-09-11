@@ -1,14 +1,19 @@
-from gymnasium import spaces
-import pygame
-import numpy as np
-import gymnasium as gym
-import os
 import json
 import math
+import os
 from typing import Dict, List, Optional, Tuple
+
+import gymnasium as gym
+import numpy as np
+import pygame
+from gymnasium import spaces
 from PIL import Image
 
-from gymnasium_env.envs.helpers import get_nearest_pano_id, download_metadata, download_images
+from gymnasium_env.envs.helpers import (
+    download_images,
+    download_metadata,
+    get_nearest_pano_id,
+)
 
 
 class GeoGuessrWorldEnv(gym.Env):
@@ -102,7 +107,6 @@ class GeoGuessrWorldEnv(gym.Env):
         self._clock = None
         self._font = None
 
-
     def _get_info(self):
         links_with_screen = self._compute_link_screens()
         return {
@@ -114,7 +118,6 @@ class GeoGuessrWorldEnv(gym.Env):
             "links": links_with_screen,
         }
 
-
     def reset(self, seed=None, options=None):
         # We need the following line to seed self.np_random
         if seed is None and self._initial_seed is not None:
@@ -123,15 +126,19 @@ class GeoGuessrWorldEnv(gym.Env):
 
         # TODO[Karen] not choose pano_root_id optimistically, first traverse graph of linked panos,
         # TODO[Karen] and choose that pano if it satisfies the criteria of being a part of connected component only.
-        self.pano_root_id  = get_nearest_pano_id(self.input_lat, self.input_lon, self.metadata_dir)
+        self.pano_root_id = get_nearest_pano_id(
+            self.input_lat, self.input_lon, self.metadata_dir
+        )
         # Ensure directories exist
         os.makedirs(self.metadata_dir, exist_ok=True)
         os.makedirs(self.images_dir, exist_ok=True)
         download_metadata(self.pano_root_id, self.metadata_dir)
-        download_images(self.pano_root_id, self.metadata_dir ,self.images_dir)
+        download_images(self.pano_root_id, self.metadata_dir, self.images_dir)
 
         # Now that metadata is available, load the graph
-        metadata_path = os.path.join(self.metadata_dir, f"{self.pano_root_id}_mini.jsonl")
+        metadata_path = os.path.join(
+            self.metadata_dir, f"{self.pano_root_id}_mini.jsonl"
+        )
         self._pano_graph = self._load_minimetadata(metadata_path)
 
         self._steps = 0
@@ -172,7 +179,11 @@ class GeoGuessrWorldEnv(gym.Env):
             terminated = True
 
         # Truncation if exceeding max_steps (unless already terminated)
-        if not terminated and self.max_steps is not None and self._steps >= int(self.max_steps):
+        if (
+            not terminated
+            and self.max_steps is not None
+            and self._steps >= int(self.max_steps)
+        ):
             truncated = True
 
         obs = self._get_observation()
@@ -181,7 +192,10 @@ class GeoGuessrWorldEnv(gym.Env):
             info["guess_lat"] = float(value[0])
             info["guess_lon"] = float(value[1])
             distance_km = self._haversine_km(
-                float(self.current_lat), float(self.current_lon), float(value[0]), float(value[1])
+                float(self.current_lat),
+                float(self.current_lon),
+                float(value[0]),
+                float(value[1]),
             )
             info["distance_km"] = distance_km
             info["score"] = reward
@@ -197,7 +211,9 @@ class GeoGuessrWorldEnv(gym.Env):
         if render_mode == "human":
             if self._screen is None:
                 pygame.init()
-                self._screen = pygame.display.set_mode((self._image_width, self._image_height))
+                self._screen = pygame.display.set_mode(
+                    (self._image_width, self._image_height)
+                )
                 pygame.display.set_caption("GeoGuessrWorldEnv")
                 self._clock = pygame.time.Clock()
                 if self._font is None:
@@ -222,12 +238,18 @@ class GeoGuessrWorldEnv(gym.Env):
             for link in links:
                 cx, cy = link["screen_xy"]
                 # Draw filled red circle
-                pygame.draw.circle(self._screen, (255, 0, 0), (int(cx), int(cy)), radius, 0)
+                pygame.draw.circle(
+                    self._screen, (255, 0, 0), (int(cx), int(cy)), radius, 0
+                )
                 # Draw white outline
-                pygame.draw.circle(self._screen, (255, 255, 255), (int(cx), int(cy)), radius, 2)
+                pygame.draw.circle(
+                    self._screen, (255, 255, 255), (int(cx), int(cy)), radius, 2
+                )
                 # Draw pano id below (or above if near bottom)
                 if self._font is not None:
-                    text_surf = self._font.render(str(link["id"]), True, (255, 255, 255))
+                    text_surf = self._font.render(
+                        str(link["id"]), True, (255, 255, 255)
+                    )
                     text_rect = text_surf.get_rect()
                     text_rect.centerx = int(cx)
                     text_rect.top = int(cy) + radius + 4
@@ -283,14 +305,22 @@ class GeoGuessrWorldEnv(gym.Env):
                     direction = link.get("direction")
                     if isinstance(link_id, str) and isinstance(direction, (int, float)):
                         links.append({"id": link_id, "direction": float(direction)})
-                graph[pano_id] = {"lat": lat, "lon": lon, "heading": heading, "links": links}
+                graph[pano_id] = {
+                    "lat": lat,
+                    "lon": lon,
+                    "heading": heading,
+                    "links": links,
+                }
         # Prune links pointing to non-existent nodes
         valid_ids = set(graph.keys())
         for node in graph.values():
             raw_links = node.get("links", []) or []
             node["links"] = [
-                link for link in raw_links
-                if isinstance(link, dict) and isinstance(link.get("id"), str) and link["id"] in valid_ids
+                link
+                for link in raw_links
+                if isinstance(link, dict)
+                and isinstance(link.get("id"), str)
+                and link["id"] in valid_ids
             ]
         return graph
 
@@ -299,8 +329,12 @@ class GeoGuessrWorldEnv(gym.Env):
         if node is None:
             raise KeyError(f"Pano id not found in metadata: {pano_id}")
         self.current_pano_id = pano_id
-        self.current_lat = float(node.get("lat")) if node.get("lat") is not None else None
-        self.current_lon = float(node.get("lon")) if node.get("lon") is not None else None
+        self.current_lat = (
+            float(node.get("lat")) if node.get("lat") is not None else None
+        )
+        self.current_lon = (
+            float(node.get("lon")) if node.get("lon") is not None else None
+        )
         self.current_links = list(node.get("links", []))
         self._current_image = None  # force reload on next observation
 
@@ -363,13 +397,25 @@ class GeoGuessrWorldEnv(gym.Env):
 
         # Filter by radius and confidence
         candidates = [
-            link for link in links if (link["_distance_px"] is not None and link["_distance_px"] <= float(self.arrow_hit_radius_px) and float(link["conf"]) >= float(self.arrow_min_conf))
+            link
+            for link in links
+            if (
+                link["_distance_px"] is not None
+                and link["_distance_px"] <= float(self.arrow_hit_radius_px)
+                and float(link["conf"]) >= float(self.arrow_min_conf)
+            )
         ]
         if not candidates:
             return  # no-op
 
         # Sort by distance, then smallest abs rel heading, then lexicographic pano id
-        candidates.sort(key=lambda link: (float(link["_distance_px"]), float(link["_rel_heading_deg"]), str(link["id"])))
+        candidates.sort(
+            key=lambda link: (
+                float(link["_distance_px"]),
+                float(link["_rel_heading_deg"]),
+                str(link["id"]),
+            )
+        )
         chosen = candidates[0]
         next_id = str(chosen["id"])
 
@@ -409,7 +455,12 @@ class GeoGuessrWorldEnv(gym.Env):
     def _compute_answer_reward(self, guess_lat: float, guess_lon: float) -> float:
         if self.current_lat is None or self.current_lon is None:
             return 0.0
-        d_km = self._haversine_km(float(self.current_lat), float(self.current_lon), float(guess_lat), float(guess_lon))
+        d_km = self._haversine_km(
+            float(self.current_lat),
+            float(self.current_lon),
+            float(guess_lat),
+            float(guess_lon),
+        )
         score = math.exp(-d_km / 400.0)
         return float(score)
 
@@ -420,7 +471,10 @@ class GeoGuessrWorldEnv(gym.Env):
         phi2 = math.radians(lat2)
         dphi = math.radians(lat2 - lat1)
         dlambda = math.radians(lon2 - lon1)
-        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        a = (
+            math.sin(dphi / 2) ** 2
+            + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
 
@@ -441,9 +495,17 @@ class GeoGuessrWorldEnv(gym.Env):
             else:
                 op_norm = int(op)
             # Prefer new explicit keys if present
-            if op_norm == 0 and "click" in action and isinstance(action.get("click"), (list, tuple)):
+            if (
+                op_norm == 0
+                and "click" in action
+                and isinstance(action.get("click"), (list, tuple))
+            ):
                 val = action.get("click", [0, 0])
-            elif op_norm == 1 and "answer" in action and isinstance(action.get("answer"), (list, tuple)):
+            elif (
+                op_norm == 1
+                and "answer" in action
+                and isinstance(action.get("answer"), (list, tuple))
+            ):
                 val = action.get("answer", [0, 0])
             else:
                 val = action.get("value", [0, 0])

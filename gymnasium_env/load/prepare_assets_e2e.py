@@ -1,25 +1,27 @@
-import os
-
-from streetview import search_panoramas
 import json
+import os
 from dataclasses import asdict
 from enum import Enum
+
+from pydantic_models import Panorama
 from streetlevel import streetview as streetlevel
+from streetview import search_panoramas
 
 from gymnasium_env.load.load_panoramas import load_single_panorama
-from pydantic_models import Panorama
-
-from gymnasium_env.load.transform_metadata_to_essential_only import transform_metadata_to_essential_only
+from gymnasium_env.load.transform_metadata_to_essential_only import (
+    transform_metadata_to_essential_only,
+)
 
 NUMBER_OF_PANOS_TO_PROCESS = 9
+
 
 def make_serializable(obj):
     """Convert non-serializable objects to serializable format"""
     if isinstance(obj, Enum):
         return obj.value
-    elif hasattr(obj, '__dict__'):
+    elif hasattr(obj, "__dict__"):
         return obj.__dict__
-    elif hasattr(obj, '_asdict'):  # namedtuple
+    elif hasattr(obj, "_asdict"):  # namedtuple
         return obj._asdict()
     else:
         return str(obj)
@@ -62,7 +64,6 @@ def bfs(pano_id):
                     for link in pano.links:
                         queue.append(link.pano.id)
                     number_of_processed_panos += 1
-
 
 
 def get_nearest_pano_id(lat: float, lon: float) -> str | None:
@@ -116,13 +117,14 @@ def prepare_assets_e2e(lat: float, lon: float):
 
         transform_metadata_to_essential_only(
             input_file="metadata/realmetadata.jsonl",
-            output_file="metadata/minimetadata.jsonl"
+            output_file="metadata/minimetadata.jsonl",
         )
         transform_metadata_to_essential_only(
-            input_file=f"metadata/{root_pano_id}.jsonl",\
-            output_file=f"metadata/{root_pano_id}_minimetadata.jsonl"
+            input_file=f"metadata/{root_pano_id}.jsonl",
+            output_file=f"metadata/{root_pano_id}_minimetadata.jsonl",
         )
         load_panorama_images(root_pano_id)
+
 
 def main():
     # lat, lon = 47.62145616847461, -122.34769137299278 # Needle space
@@ -134,8 +136,8 @@ def main():
     # lat, lon = 41.403165, 2.1750084 #Barcelona
     # lat, lon = 51.505852,-0.1244136 # London
     # lat, lon = 51.5594231, -0.175539 #Christ Church
-    #lat, lon = 47.620077,-122.198071# Good Beluvue position
-    lat, lon = 47.6323175,-122.3638804
+    # lat, lon = 47.620077,-122.198071# Good Beluvue position
+    lat, lon = 47.6323175, -122.3638804
     prepare_assets_e2e(lat, lon)
 
 

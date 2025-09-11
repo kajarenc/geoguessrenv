@@ -34,5 +34,3 @@ def test_answer_action_terminates_episode():
         assert 0.0 <= reward <= 1.0
     finally:
         env.close()
-
-

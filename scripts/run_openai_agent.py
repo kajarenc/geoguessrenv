@@ -7,7 +7,6 @@ from gymnasium.envs.registration import register
 from agents.base import AgentConfig
 from agents.openai_agent import OpenAIVisionAgent
 
-
 ENV_ID = "GeoGuessrWorld-v0"
 
 
@@ -41,6 +40,7 @@ def main() -> None:
     # Load .env for OPENAI_API_KEY if present
     try:
         from dotenv import load_dotenv  # type: ignore
+
         load_dotenv()
     except Exception:
         pass
@@ -94,16 +94,16 @@ def main() -> None:
         if terminated or truncated:
             break
 
-    print({
-        "steps": steps,
-        "score": info.get("score"),
-        "distance_km": info.get("distance_km"),
-        "pano_id": info.get("pano_id"),
-    })
+    print(
+        {
+            "steps": steps,
+            "score": info.get("score"),
+            "distance_km": info.get("distance_km"),
+            "pano_id": info.get("pano_id"),
+        }
+    )
     env.close()
 
 
 if __name__ == "__main__":
     main()
-
-

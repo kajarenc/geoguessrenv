@@ -36,5 +36,3 @@ class BaseAgent:
           {"op": "click"|"answer", "click": [x,y], "answer": [lat,lon]}
         """
         raise NotImplementedError
-
-

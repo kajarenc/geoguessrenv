@@ -1,6 +1,5 @@
-from streetview import get_panorama, crop_bottom_and_right_black_border
 from PIL import Image
-
+from streetview import crop_bottom_and_right_black_border, get_panorama
 
 
 def load_single_panorama(pano_id: str, zoom: int = 4):

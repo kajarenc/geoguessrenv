@@ -5,11 +5,16 @@ import os
 import time
 from typing import Any, Dict, List
 
-
-from agents.base import BaseAgent, AgentConfig
+from agents.base import AgentConfig, BaseAgent
 from agents.openai_models import SubmitAction
 
-from .utils import encode_image_to_jpeg_base64, compute_image_hash, compute_prompt_fingerprint, cache_get, cache_put
+from .utils import (
+    cache_get,
+    cache_put,
+    compute_image_hash,
+    compute_prompt_fingerprint,
+    encode_image_to_jpeg_base64,
+)
 
 
 class OpenAIVisionAgent(BaseAgent):
@@ -19,10 +24,13 @@ class OpenAIVisionAgent(BaseAgent):
         try:
             from openai import OpenAI  # type: ignore
         except Exception as e:
-            raise RuntimeError("openai package is required for OpenAIVisionAgent. Install 'openai'.") from e
+            raise RuntimeError(
+                "openai package is required for OpenAIVisionAgent. Install 'openai'."
+            ) from e
         # Load .env if available
         try:
             from dotenv import load_dotenv  # type: ignore
+
             load_dotenv()
         except Exception:
             pass
@@ -45,7 +53,11 @@ class OpenAIVisionAgent(BaseAgent):
         # Optional caching
         image_hash = compute_image_hash(observation)
         fingerprint = compute_prompt_fingerprint(image_hash, links, meta)
-        cached = cache_get(self.config.cache_dir, fingerprint) if self.config.cache_dir else None
+        cached = (
+            cache_get(self.config.cache_dir, fingerprint)
+            if self.config.cache_dir
+            else None
+        )
         if cached:
             action = self._parse_action_or_fallback(cached, links)
             return action
@@ -60,10 +72,16 @@ class OpenAIVisionAgent(BaseAgent):
             "Never output free-form text or JSON in the message; only call the tool."
         )
 
-        link_list_str = json.dumps([
-            {"id": link.get("id"), "heading_deg": link.get("heading_deg"), "screen_xy": link.get("screen_xy")}
-            for link in links
-        ])
+        link_list_str = json.dumps(
+            [
+                {
+                    "id": link.get("id"),
+                    "heading_deg": link.get("heading_deg"),
+                    "screen_xy": link.get("screen_xy"),
+                }
+                for link in links
+            ]
+        )
         force_answer = meta["max_steps"] - meta["steps"] <= 3
         user_text = (
             f"pano_id={meta['pano_id']} **steps={meta['steps']}** max_steps={meta['max_steps']} heading_deg={meta['heading_deg']}\n"
@@ -108,7 +126,10 @@ class OpenAIVisionAgent(BaseAgent):
                     messages=messages,
                     temperature=self.config.temperature,
                     tools=self._tools_schema(),
-                    tool_choice={"type": "function", "function": {"name": "submit_action"}},
+                    tool_choice={
+                        "type": "function",
+                        "function": {"name": "submit_action"},
+                    },
                     timeout=self.config.request_timeout_s,
                 )
                 msg = result.choices[0].message
@@ -116,8 +137,16 @@ class OpenAIVisionAgent(BaseAgent):
                 for call in tool_calls:
                     try:
                         fn = getattr(call, "function", None) or {}
-                        name = getattr(fn, "name", None) if not isinstance(fn, dict) else fn.get("name")
-                        args = getattr(fn, "arguments", None) if not isinstance(fn, dict) else fn.get("arguments")
+                        name = (
+                            getattr(fn, "name", None)
+                            if not isinstance(fn, dict)
+                            else fn.get("name")
+                        )
+                        args = (
+                            getattr(fn, "arguments", None)
+                            if not isinstance(fn, dict)
+                            else fn.get("arguments")
+                        )
                         if name == "submit_action" and args is not None:
                             model = SubmitAction.model_validate_json(args)
                             return model.model_dump()
@@ -126,12 +155,14 @@ class OpenAIVisionAgent(BaseAgent):
                         continue
                 # If no tool call returned the expected function, fall through to retry
             except Exception:
-                time.sleep(0.8 * (2 ** attempt))
+                time.sleep(0.8 * (2**attempt))
         # As a fallback, return empty dict to trigger heuristic
         return {}
 
     # --- Parsing and fallback ---
-    def _parse_action_or_fallback(self, data: Dict[str, Any], links: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _parse_action_or_fallback(
+        self, data: Dict[str, Any], links: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         try:
             op = data.get("op")
             if op == "click":
@@ -173,7 +204,9 @@ class OpenAIVisionAgent(BaseAgent):
         ]
 
     @staticmethod
-    def _snap_to_nearest_link(x: int, y: int, links: List[Dict[str, Any]]) -> tuple[int, int]:
+    def _snap_to_nearest_link(
+        x: int, y: int, links: List[Dict[str, Any]]
+    ) -> tuple[int, int]:
         best = None
         best_d2 = None
         for link in links:
@@ -185,5 +218,3 @@ class OpenAIVisionAgent(BaseAgent):
                 best_d2 = d2
                 best = (int(sx), int(sy))
         return best if best is not None else (int(x), int(y))
-
-

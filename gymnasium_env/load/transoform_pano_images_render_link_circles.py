@@ -32,7 +32,9 @@ def read_minimetadata_jsonl(jsonl_path: str) -> Dict[str, List[Tuple[float, str]
                 direction = link.get("direction")
                 link_pano = link.get("pano", {}) or {}
                 link_pano_id = link_pano.get("id")
-                if isinstance(direction, (int, float)) and isinstance(link_pano_id, str):
+                if isinstance(direction, (int, float)) and isinstance(
+                    link_pano_id, str
+                ):
                     entries.append((float(direction), link_pano_id))
 
             pano_id_to_links[pano_id] = entries
@@ -130,9 +132,18 @@ def load_large_font(preferred_size: int):
         return ImageFont.load_default()
 
 
-def draw_circles_on_image(image_path: str, links: List[Tuple[float, str]], output_path: str, pano_id: str, *,
-                          pano_heading: float = 0.0,
-                          radius: int = 24, fill_color=(255, 0, 0), outline_color=(255, 255, 255), outline_width: int = 2) -> None:
+def draw_circles_on_image(
+    image_path: str,
+    links: List[Tuple[float, str]],
+    output_path: str,
+    pano_id: str,
+    *,
+    pano_heading: float = 0.0,
+    radius: int = 24,
+    fill_color=(255, 0, 0),
+    outline_color=(255, 255, 255),
+    outline_width: int = 2,
+) -> None:
     """
     Draw a circle at the vertical center for each link direction.
     Saves the result to output_path.
@@ -179,7 +190,10 @@ def draw_circles_on_image(image_path: str, links: List[Tuple[float, str]], outpu
             for box in bboxes:
                 if outline_width > 0:
                     for ow in range(outline_width, 0, -1):
-                        draw.ellipse([box[0] - ow, box[1] - ow, box[2] + ow, box[3] + ow], outline=outline_color)
+                        draw.ellipse(
+                            [box[0] - ow, box[1] - ow, box[2] + ow, box[3] + ow],
+                            outline=outline_color,
+                        )
                 draw.ellipse(box, fill=fill_color)
 
             # Prepare label text with the same normalized angle used for x
@@ -224,7 +238,9 @@ def ensure_directory(path: str) -> None:
 def main() -> None:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     pano_id = "DyDhU3ixcGl-9BT_SNzHTQ"
-    metadata_path = os.path.join(project_root, "load", "metadata", f"{pano_id}_minimetadata.jsonl")
+    metadata_path = os.path.join(
+        project_root, "load", "metadata", f"{pano_id}_minimetadata.jsonl"
+    )
     images_dir = os.path.join(project_root, "load", "images")
     output_dir = os.path.join(project_root, "load", "markedimages")
 
@@ -245,7 +261,9 @@ def main() -> None:
         dst_image = os.path.join(output_dir, f"{pano_id}.jpg")
         try:
             heading = float(pano_to_heading.get(pano_id, 0.0))
-            draw_circles_on_image(src_image, links, dst_image, pano_id, pano_heading=heading)
+            draw_circles_on_image(
+                src_image, links, dst_image, pano_id, pano_heading=heading
+            )
             total_processed += 1
         except Exception as e:
             # Skip problematic images but continue processing others
@@ -256,5 +274,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

@@ -1,0 +1,13 @@
+{
+    "[python]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+        }
+    },
+    "python.defaultInterpreterPath": "./.venv/bin/python",
+    "python.linting.enabled": true,
+    "python.linting.ruffEnabled": true,
+    "python.formatting.provider": "none"
+}

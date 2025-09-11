@@ -1,6 +1,6 @@
 import gymnasium as gym
-from gymnasium.spaces import Box
 import numpy as np
+from gymnasium.spaces import Box
 
 
 class RelativePosition(gym.ObservationWrapper):

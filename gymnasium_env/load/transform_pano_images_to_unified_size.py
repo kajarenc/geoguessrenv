@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Tuple
 
-
 TARGET_SIZE: Tuple[int, int] = (2048, 1024)
 SUPPORTED_SUFFIXES = {".jpg", ".jpeg", ".png"}
 
@@ -60,5 +59,3 @@ def transform_all_images() -> None:
 
 if __name__ == "__main__":
     transform_all_images()
-
-

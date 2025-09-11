@@ -1,16 +1,18 @@
+from typing import List, Optional
 
 from pydantic import BaseModel
-from typing import Optional, List
 
 
 class PanoramaLink(BaseModel):
     """Represents a link to another panorama with direction information."""
-    pano: 'Panorama'
+
+    pano: "Panorama"
     direction: float
 
 
 class Panorama(BaseModel):
     """Google Street View Panorama model."""
+
     id: str
     lat: float
     lon: float
@@ -21,10 +23,7 @@ class Panorama(BaseModel):
     elevation: Optional[float] = None
     links: Optional[List[PanoramaLink]] = None
 
-    model_config = {
-        "validate_assignment": True,
-        "populate_by_name": True
-    }
+    model_config = {"validate_assignment": True, "populate_by_name": True}
 
     @property
     def pano_id(self) -> str:

@@ -1,11 +1,9 @@
 """Agent package exposing base interfaces and concrete agents."""
 
-from .base import BaseAgent, AgentConfig, AgentAction
+from agents.base import AgentAction, AgentConfig, BaseAgent
 
 __all__ = [
     "BaseAgent",
     "AgentConfig",
     "AgentAction",
 ]
-
-

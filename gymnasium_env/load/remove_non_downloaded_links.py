@@ -21,7 +21,9 @@ def write_jsonl(path: str, records: List[Dict[str, Any]]) -> None:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
-def remove_external_links(records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int, int]:
+def remove_external_links(
+    records: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], int, int]:
     """
     Remove links that point to pano IDs not present among the records.
 
@@ -112,5 +114,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

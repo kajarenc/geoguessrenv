@@ -1,7 +1,5 @@
 import argparse
 import os
-import sys
-from typing import Any, Dict
 
 import gymnasium as gym
 from gymnasium.envs.registration import register

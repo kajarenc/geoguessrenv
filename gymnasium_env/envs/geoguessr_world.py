@@ -219,15 +219,15 @@ class GeoGuessrWorldEnv(gym.Env):
             # Overlay link centers and pano ids for human debugging only
             links = self._compute_link_screens()
             radius = int(self.arrow_hit_radius_px)
-            for l in links:
-                cx, cy = l["screen_xy"]
+            for link in links:
+                cx, cy = link["screen_xy"]
                 # Draw filled red circle
                 pygame.draw.circle(self._screen, (255, 0, 0), (int(cx), int(cy)), radius, 0)
                 # Draw white outline
                 pygame.draw.circle(self._screen, (255, 255, 255), (int(cx), int(cy)), radius, 2)
                 # Draw pano id below (or above if near bottom)
                 if self._font is not None:
-                    text_surf = self._font.render(str(l["id"]), True, (255, 255, 255))
+                    text_surf = self._font.render(str(link["id"]), True, (255, 255, 255))
                     text_rect = text_surf.get_rect()
                     text_rect.centerx = int(cx)
                     text_rect.top = int(cy) + radius + 4
@@ -289,8 +289,8 @@ class GeoGuessrWorldEnv(gym.Env):
         for node in graph.values():
             raw_links = node.get("links", []) or []
             node["links"] = [
-                l for l in raw_links
-                if isinstance(l, dict) and isinstance(l.get("id"), str) and l["id"] in valid_ids
+                link for link in raw_links
+                if isinstance(link, dict) and isinstance(link.get("id"), str) and link["id"] in valid_ids
             ]
         return graph
 
@@ -355,21 +355,21 @@ class GeoGuessrWorldEnv(gym.Env):
         if not links:
             return
         # Compute distances
-        for l in links:
-            cx, cy = l["screen_xy"]
+        for link in links:
+            cx, cy = link["screen_xy"]
             dx = xi - int(cx)
             dy = yi - int(cy)
-            l["_distance_px"] = math.hypot(dx, dy)
+            link["_distance_px"] = math.hypot(dx, dy)
 
         # Filter by radius and confidence
         candidates = [
-            l for l in links if (l["_distance_px"] is not None and l["_distance_px"] <= float(self.arrow_hit_radius_px) and float(l["conf"]) >= float(self.arrow_min_conf))
+            link for link in links if (link["_distance_px"] is not None and link["_distance_px"] <= float(self.arrow_hit_radius_px) and float(link["conf"]) >= float(self.arrow_min_conf))
         ]
         if not candidates:
             return  # no-op
 
         # Sort by distance, then smallest abs rel heading, then lexicographic pano id
-        candidates.sort(key=lambda l: (float(l["_distance_px"]), float(l["_rel_heading_deg"]), str(l["id"])))
+        candidates.sort(key=lambda link: (float(link["_distance_px"]), float(link["_rel_heading_deg"]), str(link["id"])))
         chosen = candidates[0]
         next_id = str(chosen["id"])
 

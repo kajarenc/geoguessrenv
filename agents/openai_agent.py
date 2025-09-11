@@ -3,33 +3,11 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional, Literal
-
-from pydantic import BaseModel, Field, model_validator
-
-from .base import BaseAgent, AgentConfig
-class ClickParams(BaseModel):
-    x: int = Field(..., description="X screen coordinate in pixels")
-    y: int = Field(..., description="Y screen coordinate in pixels")
+from typing import Any, Dict, List
 
 
-class AnswerParams(BaseModel):
-    lat: float = Field(..., description="Latitude in degrees")
-    lon: float = Field(..., description="Longitude in degrees")
-
-
-class SubmitAction(BaseModel):
-    op: Literal["click", "answer"]
-    click: Optional[ClickParams] = None
-    answer: Optional[AnswerParams] = None
-
-    @model_validator(mode="after")
-    def _validate_required_by_op(self) -> "SubmitAction":
-        if self.op == "click" and self.click is None:
-            raise ValueError("'click' object must be provided when op=='click'")
-        if self.op == "answer" and self.answer is None:
-            raise ValueError("'answer' object must be provided when op=='answer'")
-        return self
+from agents.base import BaseAgent, AgentConfig
+from agents.openai_models import SubmitAction
 
 from .utils import encode_image_to_jpeg_base64, compute_image_hash, compute_prompt_fingerprint, cache_get, cache_put
 
@@ -83,8 +61,8 @@ class OpenAIVisionAgent(BaseAgent):
         )
 
         link_list_str = json.dumps([
-            {"id": l.get("id"), "heading_deg": l.get("heading_deg"), "screen_xy": l.get("screen_xy")}
-            for l in links
+            {"id": link.get("id"), "heading_deg": link.get("heading_deg"), "screen_xy": link.get("screen_xy")}
+            for link in links
         ])
         force_answer = meta["max_steps"] - meta["steps"] <= 3
         user_text = (
@@ -123,7 +101,6 @@ class OpenAIVisionAgent(BaseAgent):
     def _chat_completions(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Use tool calling to obtain structured action arguments; temperature from config
         max_attempts = 3
-        last_error: Exception | None = None
         for attempt in range(max_attempts):
             try:
                 result = self._client.chat.completions.create(
@@ -148,8 +125,7 @@ class OpenAIVisionAgent(BaseAgent):
                         # Try next tool call if parsing one fails
                         continue
                 # If no tool call returned the expected function, fall through to retry
-            except Exception as e:
-                last_error = e
+            except Exception:
                 time.sleep(0.8 * (2 ** attempt))
         # As a fallback, return empty dict to trigger heuristic
         return {}
@@ -200,8 +176,8 @@ class OpenAIVisionAgent(BaseAgent):
     def _snap_to_nearest_link(x: int, y: int, links: List[Dict[str, Any]]) -> tuple[int, int]:
         best = None
         best_d2 = None
-        for l in links:
-            sx, sy = l.get("screen_xy", [x, y])
+        for link in links:
+            sx, sy = link.get("screen_xy", [x, y])
             dx = int(x) - int(sx)
             dy = int(y) - int(sy)
             d2 = dx * dx + dy * dy

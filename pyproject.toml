@@ -23,3 +23,8 @@ dependencies = [
   "openai>=1.41.0",
   "python-dotenv>=1.0.1",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.13.0",
+]

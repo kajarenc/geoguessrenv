@@ -3,9 +3,34 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Literal
+
+from pydantic import BaseModel, Field, model_validator
 
 from .base import BaseAgent, AgentConfig
+class ClickParams(BaseModel):
+    x: int = Field(..., description="X screen coordinate in pixels")
+    y: int = Field(..., description="Y screen coordinate in pixels")
+
+
+class AnswerParams(BaseModel):
+    lat: float = Field(..., description="Latitude in degrees")
+    lon: float = Field(..., description="Longitude in degrees")
+
+
+class SubmitAction(BaseModel):
+    op: Literal["click", "answer"]
+    click: Optional[ClickParams] = None
+    answer: Optional[AnswerParams] = None
+
+    @model_validator(mode="after")
+    def _validate_required_by_op(self) -> "SubmitAction":
+        if self.op == "click" and self.click is None:
+            raise ValueError("'click' object must be provided when op=='click'")
+        if self.op == "answer" and self.answer is None:
+            raise ValueError("'answer' object must be provided when op=='answer'")
+        return self
+
 from .utils import encode_image_to_jpeg_base64, compute_image_hash, compute_prompt_fingerprint, cache_get, cache_put
 
 
@@ -117,7 +142,8 @@ class OpenAIVisionAgent(BaseAgent):
                         name = getattr(fn, "name", None) if not isinstance(fn, dict) else fn.get("name")
                         args = getattr(fn, "arguments", None) if not isinstance(fn, dict) else fn.get("arguments")
                         if name == "submit_action" and args is not None:
-                            return json.loads(args)
+                            model = SubmitAction.model_validate_json(args)
+                            return model.model_dump()
                     except Exception:
                         # Try next tool call if parsing one fails
                         continue
@@ -155,6 +181,7 @@ class OpenAIVisionAgent(BaseAgent):
         return {"op": "answer", "answer": [0.0, 0.0]}
 
     def _tools_schema(self) -> List[Dict[str, Any]]:
+        parameters_schema = SubmitAction.model_json_schema()
         return [
             {
                 "type": "function",
@@ -164,32 +191,7 @@ class OpenAIVisionAgent(BaseAgent):
                         "Submit either a click on a navigational link by its screen coordinates, "
                         "or a final answer as latitude/longitude."
                     ),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "op": {"type": "string", "enum": ["click", "answer"]},
-                            "click": {
-                                "type": "object",
-                                "properties": {
-                                    "x": {"type": "integer"},
-                                    "y": {"type": "integer"},
-                                },
-                                "required": ["x", "y"],
-                                "additionalProperties": False,
-                            },
-                            "answer": {
-                                "type": "object",
-                                "properties": {
-                                    "lat": {"type": "number"},
-                                    "lon": {"type": "number"},
-                                },
-                                "required": ["lat", "lon"],
-                                "additionalProperties": False,
-                            },
-                        },
-                        "required": ["op"],
-                        "additionalProperties": False,
-                    },
+                    "parameters": parameters_schema,
                 },
             }
         ]

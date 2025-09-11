@@ -1,4 +1,6 @@
 import numpy as np
+import pytest
+import os
 
 from agents.base import AgentConfig
 from agents.openai_agent import OpenAIVisionAgent
@@ -28,7 +30,7 @@ def _info_with_links(steps: int = 0):
         ],
     }
 
-
+@pytest.mark.skipif("OPENAI_API_KEY" not in os.environ, reason="OPENAI_API_KEY is not set")
 def test_act_click_snaps_to_nearest_link():
     cfg = AgentConfig(cache_dir=None)
     stub = {"op": "click", "click": {"x": 960, "y": 240}}
@@ -43,6 +45,7 @@ def test_act_click_snaps_to_nearest_link():
     assert action["click"] == [942, 256]
 
 
+@pytest.mark.skipif("OPENAI_API_KEY" not in os.environ, reason="OPENAI_API_KEY is not set")
 def test_act_answer_is_clamped():
     cfg = AgentConfig(cache_dir=None)
     stub = {"op": "answer", "answer": {"lat": 123.4, "lon": -200.0}}
@@ -57,6 +60,7 @@ def test_act_answer_is_clamped():
     assert action["answer"] == [90.0, -180.0]
 
 
+@pytest.mark.skipif("OPENAI_API_KEY" not in os.environ, reason="OPENAI_API_KEY is not set")
 def test_fallback_click_then_answer():
     cfg = AgentConfig(cache_dir=None)
 

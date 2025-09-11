@@ -24,7 +24,7 @@ cp .env.example .env
 uv run python geoguessr_env_demo.py
 
 # 5b) Run the OpenAI agent (requires OPENAI_API_KEY)
- uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 20 --input_lat 47.618566 --input_lon -122.354386 --render
+uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 10 --input_lat 47.620908 --input_lon -122.353508 --render
 ```
 
 
@@ -50,7 +50,7 @@ Example:
 
 ```bash
 export OPENAI_API_KEY=sk-...
-uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 20 --input_lat 47.618566 --input_lon -122.354386 --render
+ uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 10 --input_lat 47.620908 --input_lon -122.353508 --render
 ```
 
 Arguments:

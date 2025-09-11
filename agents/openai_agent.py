@@ -6,7 +6,7 @@ import time
 from typing import Any, Dict, List
 
 from agents.base import AgentConfig, BaseAgent
-from agents.openai_models import SubmitAction
+from agents.openai_models import AnswerParams, ClickParams
 
 from .utils import (
     cache_get,
@@ -68,7 +68,7 @@ class OpenAIVisionAgent(BaseAgent):
             "You are navigating Street View-like panoramas. You can either click a link to move "
             "(by using the exact provided screen_xy) or answer with a final latitude/longitude. "
             "If you have a good guess, prefer answering. "
-            "You MUST respond by calling the tool 'submit_action' with appropriate arguments. "
+            "You MUST respond by calling a tool ('click' or 'answer') with appropriate arguments. "
             "Never output free-form text or JSON in the message; only call the tool."
         )
 
@@ -106,6 +106,14 @@ class OpenAIVisionAgent(BaseAgent):
             },
         ]
 
+        # Bind tools based on force_answer
+        self._current_tools = self._tools_schema(force_answer=force_answer)
+        self._current_tool_choice = (
+            {"type": "function", "function": {"name": "answer"}}
+            if force_answer
+            else "auto"
+        )
+
         response = self._chat_completions(messages)
         action = self._parse_action_or_fallback(response, links)
         print("ACTION: ", action, "\n")
@@ -125,11 +133,11 @@ class OpenAIVisionAgent(BaseAgent):
                     model=self.config.model,
                     messages=messages,
                     temperature=self.config.temperature,
-                    tools=self._tools_schema(),
-                    tool_choice={
-                        "type": "function",
-                        "function": {"name": "submit_action"},
-                    },
+                    tools=(
+                        getattr(self, "_current_tools", None)
+                        or self._tools_schema(force_answer=False)
+                    ),
+                    tool_choice=getattr(self, "_current_tool_choice", "auto"),
                     timeout=self.config.request_timeout_s,
                 )
                 msg = result.choices[0].message
@@ -147,9 +155,15 @@ class OpenAIVisionAgent(BaseAgent):
                             if not isinstance(fn, dict)
                             else fn.get("arguments")
                         )
-                        if name == "submit_action" and args is not None:
-                            model = SubmitAction.model_validate_json(args)
-                            return model.model_dump()
+                        if name == "click" and args is not None:
+                            model = ClickParams.model_validate_json(args)
+                            return {"op": "click", "click": {"x": model.x, "y": model.y}}
+                        if name == "answer" and args is not None:
+                            model = AnswerParams.model_validate_json(args)
+                            return {
+                                "op": "answer",
+                                "answer": {"lat": model.lat, "lon": model.lon},
+                            }
                     except Exception:
                         # Try next tool call if parsing one fails
                         continue
@@ -187,21 +201,32 @@ class OpenAIVisionAgent(BaseAgent):
             return {"op": "click", "click": [int(sx), int(sy)]}
         return {"op": "answer", "answer": [0.0, 0.0]}
 
-    def _tools_schema(self) -> List[Dict[str, Any]]:
-        parameters_schema = SubmitAction.model_json_schema()
-        return [
+    def _tools_schema(self, force_answer: bool = False) -> List[Dict[str, Any]]:
+        tools: List[Dict[str, Any]] = []
+        if not force_answer:
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "click",
+                        "description": (
+                            "Click a navigational link by specifying its screen coordinates."
+                        ),
+                        "parameters": ClickParams.model_json_schema(),
+                    },
+                }
+            )
+        tools.append(
             {
                 "type": "function",
                 "function": {
-                    "name": "submit_action",
-                    "description": (
-                        "Submit either a click on a navigational link by its screen coordinates, "
-                        "or a final answer as latitude/longitude."
-                    ),
-                    "parameters": parameters_schema,
+                    "name": "answer",
+                    "description": "Submit a final answer as latitude and longitude.",
+                    "parameters": AnswerParams.model_json_schema(),
                 },
             }
-        ]
+        )
+        return tools
 
     @staticmethod
     def _snap_to_nearest_link(

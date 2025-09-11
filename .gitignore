@@ -173,5 +173,5 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
-#tempcache
+tempcache
 gymnasium_env/load/podzdamerplatzimages/

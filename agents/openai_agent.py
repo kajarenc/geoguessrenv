@@ -51,10 +51,10 @@ class OpenAIVisionAgent(BaseAgent):
         b64_image = encode_image_to_jpeg_base64(observation, quality=95)
         system_prompt = (
             "You are navigating Street View-like panoramas. You can either click a link to move "
-            "(by outputting the exact provided screen_xy) or answer with final latitude/longitude. "
-            "If you have a good guess, always return an answer."
-            "Output ONLY a JSON object matching this schema: {\"op\": \"click\"|\"answer\", \"click\": {\"x\": int, \"y\": int}, \"answer\": {\"lat\": float, \"lon\": float}}. "
-            "Do not include any additional keys or text."
+            "(by using the exact provided screen_xy) or answer with a final latitude/longitude. "
+            "If you have a good guess, prefer answering. "
+            "You MUST respond by calling the tool 'submit_action' with appropriate arguments. "
+            "Never output free-form text or JSON in the message; only call the tool."
         )
 
         link_list_str = json.dumps([
@@ -96,7 +96,7 @@ class OpenAIVisionAgent(BaseAgent):
 
     # --- OpenAI call with retries ---
     def _chat_completions(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
-        # Using JSON-like constraint by post-parse; temperature=0 for determinism
+        # Use tool calling to obtain structured action arguments; temperature from config
         max_attempts = 3
         last_error: Exception | None = None
         for attempt in range(max_attempts):
@@ -105,11 +105,23 @@ class OpenAIVisionAgent(BaseAgent):
                     model=self.config.model,
                     messages=messages,
                     temperature=self.config.temperature,
-                    response_format={"type": "json_object"},
+                    tools=self._tools_schema(),
+                    tool_choice={"type": "function", "function": {"name": "submit_action"}},
                     timeout=self.config.request_timeout_s,
                 )
-                content = result.choices[0].message.content or "{}"
-                return json.loads(content)
+                msg = result.choices[0].message
+                tool_calls = getattr(msg, "tool_calls", None) or []
+                for call in tool_calls:
+                    try:
+                        fn = getattr(call, "function", None) or {}
+                        name = getattr(fn, "name", None) if not isinstance(fn, dict) else fn.get("name")
+                        args = getattr(fn, "arguments", None) if not isinstance(fn, dict) else fn.get("arguments")
+                        if name == "submit_action" and args is not None:
+                            return json.loads(args)
+                    except Exception:
+                        # Try next tool call if parsing one fails
+                        continue
+                # If no tool call returned the expected function, fall through to retry
             except Exception as e:
                 last_error = e
                 time.sleep(0.8 * (2 ** attempt))
@@ -141,6 +153,46 @@ class OpenAIVisionAgent(BaseAgent):
             sx, sy = links[0].get("screen_xy", [512, 256])
             return {"op": "click", "click": [int(sx), int(sy)]}
         return {"op": "answer", "answer": [0.0, 0.0]}
+
+    def _tools_schema(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "submit_action",
+                    "description": (
+                        "Submit either a click on a navigational link by its screen coordinates, "
+                        "or a final answer as latitude/longitude."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "op": {"type": "string", "enum": ["click", "answer"]},
+                            "click": {
+                                "type": "object",
+                                "properties": {
+                                    "x": {"type": "integer"},
+                                    "y": {"type": "integer"},
+                                },
+                                "required": ["x", "y"],
+                                "additionalProperties": False,
+                            },
+                            "answer": {
+                                "type": "object",
+                                "properties": {
+                                    "lat": {"type": "number"},
+                                    "lon": {"type": "number"},
+                                },
+                                "required": ["lat", "lon"],
+                                "additionalProperties": False,
+                            },
+                        },
+                        "required": ["op"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+        ]
 
     @staticmethod
     def _snap_to_nearest_link(x: int, y: int, links: List[Dict[str, Any]]) -> tuple[int, int]:

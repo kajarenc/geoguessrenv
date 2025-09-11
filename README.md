@@ -28,9 +28,12 @@ uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 10 --in
 ```
 
 
+### Note
+For --input_lat and --input_lon use 6 digits after the decimal point format.
+
 ## Demos
 
-- `geoguessr_env_demo.py`: Manually interact with the GeoGuessr-like environment.
+- `geoguessr_env_demo.py`: Basic example to test GeoGuessrWorldEnv environment.
 
 ## OpenAI Agent Runner
 

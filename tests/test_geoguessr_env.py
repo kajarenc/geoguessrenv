@@ -93,7 +93,11 @@ def test_answer_action_terminates_episode(test_config):
     env = GeoGuessrWorldEnv(config=test_config)
     try:
         obs, info = env.reset()
-        assert isinstance(obs, np.ndarray)
+        assert (
+            isinstance(obs, dict)
+            and "image" in obs
+            and isinstance(obs["image"], np.ndarray)
+        )
         assert "gt_lat" in info and "gt_lon" in info
 
         # Issue an answer action; any lat/lon should terminate.
@@ -115,11 +119,13 @@ def test_observation_format_and_types(test_config):
         obs, info = env.reset()
 
         # Test observation structure
-        assert isinstance(obs, np.ndarray)
-        assert obs.dtype == np.uint8
-        assert len(obs.shape) == 3
-        assert obs.shape[2] == 3  # RGB channels
-        assert np.all(obs >= 0) and np.all(obs <= 255)
+        assert isinstance(obs, dict) and "image" in obs
+        img = obs["image"]
+        assert isinstance(img, np.ndarray)
+        assert img.dtype == np.uint8
+        assert len(img.shape) == 3
+        assert img.shape[2] == 3  # RGB channels
+        assert np.all(img >= 0) and np.all(img <= 255)
 
         # Test info structure
         required_info_keys = ["pano_id", "gt_lat", "gt_lon", "steps", "pose", "links"]
@@ -180,7 +186,7 @@ def test_click_within_radius_selects_link():
 
     # Mock _get_observation to avoid file loading
     test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
-    with patch.object(env, "_get_observation", return_value=test_image):
+    with patch.object(env, "_get_observation", return_value={"image": test_image}):
         # Calculate where the east link should appear (direction=π/2, heading=0)
         # x = (π/2) / (2π) * 1024 = 256
         expected_x = 256
@@ -387,7 +393,7 @@ def test_arrow_click_mapping_with_known_coordinates():
 
     # Mock _get_observation to avoid file loading
     test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
-    with patch.object(env, "_get_observation", return_value=test_image):
+    with patch.object(env, "_get_observation", return_value={"image": test_image}):
         # Get the computed link screen positions
         links = env._compute_link_screens()
         assert len(links) == 4

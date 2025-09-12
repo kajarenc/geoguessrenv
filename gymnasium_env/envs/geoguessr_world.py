@@ -1,7 +1,7 @@
 import json
 import math
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import gymnasium as gym
 import numpy as np
@@ -61,11 +61,16 @@ class GeoGuessrWorldEnv(gym.Env):
         self._image_width = 1024
         self._image_height = 512
 
-        self.observation_space = spaces.Box(
-            low=0,
-            high=255,
-            shape=(self._image_height, self._image_width, 3),
-            dtype=np.uint8,
+        # Observation is a dictionary with an "image" key per spec
+        self.observation_space = spaces.Dict(
+            {
+                "image": spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(self._image_height, self._image_width, 3),
+                    dtype=np.uint8,
+                )
+            }
         )
         # Action space
         # Two actions:
@@ -207,7 +212,7 @@ class GeoGuessrWorldEnv(gym.Env):
         # Allow override via argument; fall back to configured render_mode
         render_mode = mode if mode is not None else self.render_mode
         if render_mode == "rgb_array":
-            return self._get_observation()
+            return self._get_observation()["image"]
         if render_mode == "human":
             if self._screen is None:
                 pygame.init()
@@ -227,7 +232,7 @@ class GeoGuessrWorldEnv(gym.Env):
                 if event.type == pygame.QUIT:
                     pass
 
-            frame = self._get_observation()
+            frame = self._get_observation()["image"]
             # pygame expects (width, height, 3) and surfaces are transposed
             surf = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
             self._screen.blit(surf, (0, 0))
@@ -338,14 +343,14 @@ class GeoGuessrWorldEnv(gym.Env):
         self.current_links = list(node.get("links", []))
         self._current_image = None  # force reload on next observation
 
-    def _get_observation(self) -> np.ndarray:
+    def _get_observation(self) -> Dict[str, np.ndarray]:
         if self._current_image is None:
             image_path = os.path.join(self.images_dir, f"{self.current_pano_id}.jpg")
             with Image.open(image_path) as img:
                 img = img.convert("RGB")
                 np_img = np.array(img, dtype=np.uint8)
             self._current_image = np_img
-        return self._current_image
+        return {"image": self._current_image}
 
     # --- Click handling and link mapping ---
     def _compute_link_screens(self) -> List[Dict[str, object]]:
@@ -479,21 +484,36 @@ class GeoGuessrWorldEnv(gym.Env):
         return R * c
 
     # --- Action parsing ---
-    def _parse_action(self, action) -> Tuple[int, Tuple[float, float]]:
+    def _parse_action(
+        self, action: Union[Dict, str]
+    ) -> Tuple[int, Tuple[float, float]]:
         """
         Returns a pair (op, value) where:
         - op: 0 for click, 1 for answer
         - value: (x, y) for click; (lat, lon) for answer
-        Accepts either of:
-          - {"op": int|str, "value": [a,b]}  (backward compatible)
-          - {"op": int|str, "click": [x,y], "answer": [lat,lon]}  (new explicit spaces)
+        Accepts multiple formats:
+          - JSON string: '{"op":"click","value":[x,y]}' or '{"op":"answer","value":[lat,lon]}'
+          - Dict with value: {"op": "click", "value": [x,y]}
+          - Dict with explicit keys: {"op": "click", "click": [x,y], "answer": [lat,lon]}
         """
+        # Handle JSON string input (from VLMBroker)
+        if isinstance(action, str):
+            try:
+                action = json.loads(action.strip())
+            except (json.JSONDecodeError, AttributeError):
+                # Invalid JSON string, fallback to center click
+                return 0, (
+                    float(self._image_width // 2),
+                    float(self._image_height // 2),
+                )
+
         if isinstance(action, dict):
             op = action.get("op")
             if isinstance(op, str):
                 op_norm = 0 if op == "click" else 1
             else:
-                op_norm = int(op)
+                op_norm = int(op) if op is not None else 0
+
             # Prefer new explicit keys if present
             if (
                 op_norm == 0
@@ -526,13 +546,14 @@ class GeoGuessrWorldEnv(gym.Env):
 
             # Validate/clamp based on declared spaces
             if op_norm == 0:
-                # click: bounds [0,1024] x [0,512]
-                v0 = max(int(self._click_low[0]), min(int(self._click_high[0]), v0))
-                v1 = max(int(self._click_low[1]), min(int(self._click_high[1]), v1))
+                # click: bounds [0,1024] x [0,512] (note: should be exclusive upper bound)
+                v0 = max(int(self._click_low[0]), min(int(self._click_high[0]) - 1, v0))
+                v1 = max(int(self._click_low[1]), min(int(self._click_high[1]) - 1, v1))
             else:
                 # answer: latitude/longitude bounds
                 v0 = max(-90.0, min(90.0, v0))
                 v1 = max(-180.0, min(180.0, v1))
             return op_norm, (v0, v1)
+
         # Fallback: treat as no-op click center
         return 0, (float(self._image_width // 2), float(self._image_height // 2))

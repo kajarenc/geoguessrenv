@@ -209,7 +209,7 @@ def main():
         # Clean up
         try:
             Path(session_path).unlink(missing_ok=True)
-        except:
+        except:  # noqa: E722
             pass
 
 

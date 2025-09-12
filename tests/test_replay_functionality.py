@@ -207,10 +207,10 @@ class TestEnvironmentReplayIntegration:
             ) as mock_get_pano,
             patch(
                 "gymnasium_env.envs.geoguessr_world.download_metadata"
-            ) as mock_download_meta,
+            ),
             patch(
                 "gymnasium_env.envs.geoguessr_world.download_images"
-            ) as mock_download_imgs,
+            ),
         ):
             mock_get_pano.return_value = "test_pano_123"
 

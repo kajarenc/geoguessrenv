@@ -159,7 +159,7 @@ class GeoGuessrWorldEnv(gym.Env):
         # Handle different modes: online vs offline
         if self.mode == "offline" and self.replay_session_path:
             # OFFLINE MODE: Load from replay file
-            session = self._replay_manager.load_session(self.replay_session_path)
+            self._replay_manager.load_session(self.replay_session_path)
             episode = self._replay_manager.get_next_episode()
 
             if episode is None:

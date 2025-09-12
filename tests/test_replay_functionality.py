@@ -205,12 +205,8 @@ class TestEnvironmentReplayIntegration:
             patch(
                 "gymnasium_env.envs.geoguessr_world.get_nearest_pano_id"
             ) as mock_get_pano,
-            patch(
-                "gymnasium_env.envs.geoguessr_world.download_metadata"
-            ),
-            patch(
-                "gymnasium_env.envs.geoguessr_world.download_images"
-            ),
+            patch("gymnasium_env.envs.geoguessr_world.download_metadata"),
+            patch("gymnasium_env.envs.geoguessr_world.download_images"),
         ):
             mock_get_pano.return_value = "test_pano_123"
 

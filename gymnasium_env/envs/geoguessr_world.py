@@ -14,6 +14,7 @@ from gymnasium_env.envs.helpers import (
     download_metadata,
     get_nearest_pano_id,
 )
+from gymnasium_env.replay import ReplayManager
 
 
 class GeoGuessrWorldEnv(gym.Env):
@@ -47,6 +48,10 @@ class GeoGuessrWorldEnv(gym.Env):
         # self.pano_root_id: str = "B8Yw_SheqPArDjOk4WL4yw"
         self.pano_root_id: Optional[str] = None
 
+        # Replay functionality
+        self.replay_session_path: Optional[str] = cfg.get("replay_session_path")
+        self.freeze_run_path: Optional[str] = cfg.get("freeze_run_path")
+
         # Resolve project paths using cache_root when provided
         # images -> <cache_root>/images; metadata -> <cache_root>/metadata
         env_dir = os.path.dirname(os.path.abspath(__file__))
@@ -60,6 +65,10 @@ class GeoGuessrWorldEnv(gym.Env):
         # Provide sensible defaults for dimensions until reset() initializes them
         self._image_width = 1024
         self._image_height = 512
+
+        # Initialize replay manager
+        self._replay_manager = ReplayManager(cache_root)
+        self._current_episode_data: Optional[Dict] = None
 
         # Observation is a dictionary with an "image" key per spec
         self.observation_space = spaces.Dict(
@@ -114,10 +123,24 @@ class GeoGuessrWorldEnv(gym.Env):
 
     def _get_info(self):
         links_with_screen = self._compute_link_screens()
+
+        # Use replay data if available, otherwise use current pano coordinates
+        if self._current_episode_data:
+            gt_lat = self._current_episode_data["gt_lat"]
+            gt_lon = self._current_episode_data["gt_lon"]
+            provider = self._current_episode_data.get(
+                "provider", self.provider or "gsv"
+            )
+        else:
+            gt_lat = self.current_lat
+            gt_lon = self.current_lon
+            provider = self.provider or "gsv"
+
         return {
+            "provider": provider,
             "pano_id": self.current_pano_id,
-            "gt_lat": self.current_lat,
-            "gt_lon": self.current_lon,
+            "gt_lat": gt_lat,
+            "gt_lon": gt_lon,
             "steps": self._steps,
             "pose": {"heading_deg": math.degrees(self._heading_rad) % 360.0},
             "links": links_with_screen,
@@ -129,31 +152,110 @@ class GeoGuessrWorldEnv(gym.Env):
             seed = int(self._initial_seed)
         super().reset(seed=seed)
 
-        # TODO[Karen] not choose pano_root_id optimistically, first traverse graph of linked panos,
-        # TODO[Karen] and choose that pano if it satisfies the criteria of being a part of connected component only.
-        self.pano_root_id = get_nearest_pano_id(
-            self.input_lat, self.input_lon, self.metadata_dir
-        )
         # Ensure directories exist
         os.makedirs(self.metadata_dir, exist_ok=True)
         os.makedirs(self.images_dir, exist_ok=True)
-        download_metadata(self.pano_root_id, self.metadata_dir)
-        download_images(self.pano_root_id, self.metadata_dir, self.images_dir)
 
-        # Now that metadata is available, load the graph
-        metadata_path = os.path.join(
-            self.metadata_dir, f"{self.pano_root_id}_mini.jsonl"
-        )
-        self._pano_graph = self._load_minimetadata(metadata_path)
+        # Handle different modes: online vs offline
+        if self.mode == "offline" and self.replay_session_path:
+            # OFFLINE MODE: Load from replay file
+            session = self._replay_manager.load_session(self.replay_session_path)
+            episode = self._replay_manager.get_next_episode()
+
+            if episode is None:
+                raise RuntimeError("No episodes available in replay session")
+
+            # Set up episode from replay data
+            self.pano_root_id = episode.pano_id
+            self._current_episode_data = {
+                "provider": episode.provider,
+                "gt_lat": episode.gt_lat,
+                "gt_lon": episode.gt_lon,
+                "initial_yaw_deg": episode.initial_yaw_deg,
+            }
+
+            # Verify cached data exists (no network calls in offline mode)
+            metadata_path = os.path.join(
+                self.metadata_dir, f"{self.pano_root_id}_mini.jsonl"
+            )
+            if not os.path.exists(metadata_path):
+                raise FileNotFoundError(
+                    f"Cached metadata not found for offline mode: {metadata_path}"
+                )
+
+            # Load from cache only
+            self._pano_graph = self._load_minimetadata(metadata_path)
+
+        else:
+            # ONLINE MODE: Sample coordinates and download data
+            if self.mode == "online" and seed is not None:
+                # Start recording session for online mode
+                self._replay_manager.start_recording_session(seed, self.geofence)
+
+                # Sample coordinates from geofence or use provided input
+                if self.input_lat is not None and self.input_lon is not None:
+                    lat, lon = self.input_lat, self.input_lon
+                else:
+                    lat, lon = self._replay_manager.generate_episode_from_geofence()
+            else:
+                # Fallback to provided coordinates
+                if self.input_lat is None or self.input_lon is None:
+                    raise ValueError(
+                        "input_lat and input_lon must be provided when not using geofence sampling"
+                    )
+                lat, lon = self.input_lat, self.input_lon
+
+            # Find nearest panorama and download data
+            self.pano_root_id = get_nearest_pano_id(lat, lon, self.metadata_dir)
+            if self.pano_root_id is None:
+                raise RuntimeError(f"No panorama found near coordinates ({lat}, {lon})")
+
+            # Download metadata and images
+            download_metadata(self.pano_root_id, self.metadata_dir)
+            download_images(self.pano_root_id, self.metadata_dir, self.images_dir)
+
+            # Load the graph
+            metadata_path = os.path.join(
+                self.metadata_dir, f"{self.pano_root_id}_mini.jsonl"
+            )
+            self._pano_graph = self._load_minimetadata(metadata_path)
+
+            # Get ground truth coordinates from pano metadata
+            node = self._pano_graph.get(self.pano_root_id, {})
+            gt_lat = node.get("lat", lat)
+            gt_lon = node.get("lon", lon)
+
+            # Record episode if in online mode with recording
+            if self.mode == "online" and hasattr(
+                self._replay_manager, "current_session"
+            ):
+                self._replay_manager.add_episode_to_session(
+                    provider=self.provider or "gsv",
+                    pano_id=self.pano_root_id,
+                    gt_lat=gt_lat,
+                    gt_lon=gt_lon,
+                    initial_yaw_deg=0.0,
+                )
+
+                # Save session if freeze_run_path is specified
+                if self.freeze_run_path:
+                    self._replay_manager.save_session(self.freeze_run_path)
 
         self._steps = 0
-        # Initialize to fixed root pano
+        # Initialize to root pano
         self._set_current_pano(self.pano_root_id)
-        # Initialize camera heading to the current pano heading if available
+
+        # Initialize camera heading
         node = self._pano_graph.get(self.current_pano_id, {})
-        heading = node.get("heading")
-        if isinstance(heading, (int, float)):
-            self._heading_rad = float(heading)
+        if (
+            self._current_episode_data
+            and "initial_yaw_deg" in self._current_episode_data
+        ):
+            self._heading_rad = math.radians(
+                self._current_episode_data["initial_yaw_deg"]
+            )
+        elif isinstance(node.get("heading"), (int, float)):
+            self._heading_rad = float(node.get("heading"))
         else:
             self._heading_rad = 0.0
 

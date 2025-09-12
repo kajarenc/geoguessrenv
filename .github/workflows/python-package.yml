@@ -11,7 +11,7 @@ on:
 
 jobs:
   build:
-    
+    environment: pytest-env
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

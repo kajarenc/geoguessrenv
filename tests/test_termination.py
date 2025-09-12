@@ -13,8 +13,8 @@ def test_answer_action_terminates_episode():
     # so that reset() runs entirely offline using cached assets.
     config = {
         "cache_root": cache_root,
-        "input_lat": 52.5233,
-        "input_lon": 13.403172,
+        "input_lat": 47.620908,
+        "input_lon": -122.353508,
         "max_steps": 5,
     }
 

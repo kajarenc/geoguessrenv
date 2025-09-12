@@ -186,8 +186,6 @@ def test_click_within_radius_selects_link():
         expected_x = 256
         expected_y = 256  # middle of image
 
-        initial_pano = env.current_pano_id
-
         # Click within radius (should select a link)
         click_x = expected_x + 10  # Within 24px radius
         click_y = expected_y + 10

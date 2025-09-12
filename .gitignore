@@ -175,3 +175,7 @@ pyrightconfig.json
 
 tempcache/
 gymnasium_env/load/podzdamerplatzimages/
+
+# macOS
+.DS_Store
+**/.DS_Store

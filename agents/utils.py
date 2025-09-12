@@ -14,7 +14,7 @@ def encode_image_to_jpeg_base64(np_image, quality: int = 85) -> str:
     """
     Convert a numpy image (H,W,3) uint8 to base64-encoded JPEG.
     """
-    img = Image.fromarray(np_image, mode="RGB")
+    img = Image.fromarray(np_image)
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=quality)
     return base64.b64encode(buf.getvalue()).decode("utf-8")

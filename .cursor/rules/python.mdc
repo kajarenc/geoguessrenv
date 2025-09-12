@@ -1,0 +1,27 @@
+---
+description:
+globs: **/*.py
+alwaysApply: false
+---
+
+# Python Development Guide
+
+- Supported Python versions: 3.11 - 3.12
+- Linter: Ruff 0.x
+- Formatter: Ruff 0.x
+- Testing: pytest 8.x
+
+## Key Principles
+
+- PEP 8 Compliance: Adhere to PEP 8 guidelines for code style, with Ruff as the primary linter and formatter.
+- Elegance and Readability: Strive for elegant and Pythonic code that is easy to understand and maintain.
+- Zen of Python: Keep the Zen of Python in mind when making design decisions.
+- Avoid inheritance (prefer composition).
+- Name functions and variables in such a way that you don't need comments to explain the code.
+- Python folder and filenames should all be snake_cased regardless of what they contain.
+- Capitalize comments, use proper grammar and punctuation, and no cursing.
+- Prioritize new features in Python 3.9+.
+- All Python dependencies **must be installed, synchronized, and locked** using `uv`.
+- Never use `pip`, `pip-tools`, or `poetry` directly for dependency management.
+- Write unit tests using pytest.
+  

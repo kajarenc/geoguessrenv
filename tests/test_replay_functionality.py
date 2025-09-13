@@ -192,6 +192,7 @@ class TestEnvironmentReplayIntegration:
 
         config = {
             "mode": "online",
+            "provider": "gsv",
             "cache_root": temp_cache_dir,
             "input_lat": 47.620908,
             "input_lon": -122.353508,
@@ -203,10 +204,10 @@ class TestEnvironmentReplayIntegration:
         # Mock the download functions to avoid network calls
         with (
             patch(
-                "gymnasium_env.envs.geoguessr_world.get_nearest_pano_id"
+                "gymnasium_env.envs.mode_handlers.get_nearest_pano_id"
             ) as mock_get_pano,
-            patch("gymnasium_env.envs.geoguessr_world.download_metadata"),
-            patch("gymnasium_env.envs.geoguessr_world.download_images"),
+            patch("gymnasium_env.envs.mode_handlers.download_metadata"),
+            patch("gymnasium_env.envs.mode_handlers.download_images"),
         ):
             mock_get_pano.return_value = "test_pano_123"
 
@@ -278,6 +279,7 @@ class TestEnvironmentReplayIntegration:
 
         config = {
             "mode": "offline",
+            "provider": "gsv",
             "cache_root": temp_cache_dir,
             "replay_session_path": str(session_path),
         }
@@ -334,6 +336,7 @@ class TestEnvironmentReplayIntegration:
 
         config = {
             "mode": "offline",
+            "provider": "gsv",
             "cache_root": temp_cache_dir,
             "replay_session_path": str(session_path),
         }

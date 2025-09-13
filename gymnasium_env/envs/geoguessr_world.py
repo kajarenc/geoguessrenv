@@ -9,12 +9,7 @@ import pygame
 from gymnasium import spaces
 from PIL import Image
 
-from gymnasium_env.envs.helpers import (
-    download_images,
-    download_metadata,
-    get_nearest_pano_id,
-)
-from gymnasium_env.replay import ReplayManager
+from gymnasium_env.envs.mode_handlers import ModeHandler, create_mode_handler
 
 
 class GeoGuessrWorldEnv(gym.Env):
@@ -48,7 +43,7 @@ class GeoGuessrWorldEnv(gym.Env):
         # self.pano_root_id: str = "B8Yw_SheqPArDjOk4WL4yw"
         self.pano_root_id: Optional[str] = None
 
-        # Replay functionality
+        # Mode-specific configuration
         self.replay_session_path: Optional[str] = cfg.get("replay_session_path")
         self.freeze_run_path: Optional[str] = cfg.get("freeze_run_path")
 
@@ -66,8 +61,8 @@ class GeoGuessrWorldEnv(gym.Env):
         self._image_width = 1024
         self._image_height = 512
 
-        # Initialize replay manager
-        self._replay_manager = ReplayManager(cache_root)
+        # Initialize mode handler
+        self._mode_handler: Optional[ModeHandler] = None
         self._current_episode_data: Optional[Dict] = None
 
         # Observation is a dictionary with an "image" key per spec
@@ -156,94 +151,22 @@ class GeoGuessrWorldEnv(gym.Env):
         os.makedirs(self.metadata_dir, exist_ok=True)
         os.makedirs(self.images_dir, exist_ok=True)
 
-        # Handle different modes: online vs offline
-        if self.mode == "offline" and self.replay_session_path:
-            # OFFLINE MODE: Load from replay file
-            self._replay_manager.load_session(self.replay_session_path)
-            episode = self._replay_manager.get_next_episode()
+        # Create mode handler if not exists or mode changed
+        if self._mode_handler is None:
+            self._mode_handler = self._create_mode_handler()
 
-            if episode is None:
-                raise RuntimeError("No episodes available in replay session")
+        # Initialize episode using mode handler
+        episode_data = self._mode_handler.initialize_episode(seed=seed)
 
-            # Set up episode from replay data
-            self.pano_root_id = episode.pano_id
-            self._current_episode_data = {
-                "provider": episode.provider,
-                "gt_lat": episode.gt_lat,
-                "gt_lon": episode.gt_lon,
-                "initial_yaw_deg": episode.initial_yaw_deg,
-            }
+        # Set up episode data
+        self.pano_root_id = episode_data.pano_id
+        self._current_episode_data = episode_data.to_dict()
 
-            # Verify cached data exists (no network calls in offline mode)
-            metadata_path = os.path.join(
-                self.metadata_dir, f"{self.pano_root_id}_mini.jsonl"
-            )
-            if not os.path.exists(metadata_path):
-                raise FileNotFoundError(
-                    f"Cached metadata not found for offline mode: {metadata_path}"
-                )
+        # Load panorama graph
+        self._pano_graph = self._mode_handler.load_pano_graph(self.pano_root_id)
 
-            # Load from cache only
-            self._pano_graph = self._load_minimetadata(metadata_path)
-
-        else:
-            # ONLINE MODE: Sample coordinates and download data
-            if self.mode == "online" and seed is not None:
-                # Start recording session for online mode
-                self._replay_manager.start_recording_session(seed, self.geofence)
-
-                # Sample coordinates from geofence or use provided input
-                if self.input_lat is not None and self.input_lon is not None:
-                    lat, lon = self.input_lat, self.input_lon
-                else:
-                    lat, lon = self._replay_manager.generate_episode_from_geofence()
-            else:
-                # Fallback to provided coordinates
-                if self.input_lat is None or self.input_lon is None:
-                    raise ValueError(
-                        "input_lat and input_lon must be provided when not using geofence sampling"
-                    )
-                lat, lon = self.input_lat, self.input_lon
-
-            # Find nearest panorama and download data
-            self.pano_root_id = get_nearest_pano_id(lat, lon, self.metadata_dir)
-            if self.pano_root_id is None:
-                raise RuntimeError(f"No panorama found near coordinates ({lat}, {lon})")
-
-            # Download metadata and images
-            download_metadata(self.pano_root_id, self.metadata_dir)
-            download_images(self.pano_root_id, self.metadata_dir, self.images_dir)
-
-            # Load the graph
-            metadata_path = os.path.join(
-                self.metadata_dir, f"{self.pano_root_id}_mini.jsonl"
-            )
-            self._pano_graph = self._load_minimetadata(metadata_path)
-
-            # Get ground truth coordinates from pano metadata
-            node = self._pano_graph.get(self.pano_root_id, {})
-            gt_lat = node.get("lat", lat)
-            gt_lon = node.get("lon", lon)
-
-            # Record episode if in online mode with recording
-            if (
-                self.mode == "online"
-                and self._replay_manager.current_session is not None
-            ):
-                self._replay_manager.add_episode_to_session(
-                    provider=self.provider or "gsv",
-                    pano_id=self.pano_root_id,
-                    gt_lat=gt_lat,
-                    gt_lon=gt_lon,
-                    initial_yaw_deg=0.0,
-                )
-
-                # Save session if freeze_run_path is specified
-                if self.freeze_run_path:
-                    self._replay_manager.save_session(self.freeze_run_path)
-
+        # Initialize episode state
         self._steps = 0
-        # Initialize to root pano
         self._set_current_pano(self.pano_root_id)
 
         # Initialize camera heading
@@ -263,6 +186,32 @@ class GeoGuessrWorldEnv(gym.Env):
         obs = self._get_observation()
         info = self._get_info()
         return obs, info
+
+    def _create_mode_handler(self) -> ModeHandler:
+        """Create appropriate mode handler based on configuration."""
+        if not self.mode:
+            # Default to online mode if not specified
+            self.mode = "online"
+
+        config = {
+            "provider": self.provider,
+            "geofence": self.geofence,
+            "input_lat": self.input_lat,
+            "input_lon": self.input_lon,
+            "replay_session_path": self.replay_session_path,
+            "freeze_run_path": self.freeze_run_path,
+            "rate_limit_qps": self.rate_limit_qps,
+            "max_fetch_retries": self.max_fetch_retries,
+            "min_capture_year": self.min_capture_year,
+        }
+
+        return create_mode_handler(
+            mode=self.mode,
+            cache_root=os.path.dirname(self.metadata_dir),  # cache_root
+            metadata_dir=self.metadata_dir,
+            images_dir=self.images_dir,
+            **config,
+        )
 
     # --- Step with click and answer actions ---
     def step(self, action):
@@ -389,48 +338,6 @@ class GeoGuessrWorldEnv(gym.Env):
             self._clock = None
 
     # --- Helpers ---
-    def _load_minimetadata(self, jsonl_path: str) -> Dict[str, Dict]:
-        graph: Dict[str, Dict] = {}
-        if not os.path.isfile(jsonl_path):
-            raise FileNotFoundError(f"Metadata file not found: {jsonl_path}")
-        with open(jsonl_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                data = json.loads(line)
-                pano_id = data.get("id")
-                if not pano_id:
-                    continue
-                lat = data.get("lat")
-                lon = data.get("lon")
-                heading = data.get("heading")
-                links_raw = data.get("links", []) or []
-                links: List[Dict[str, object]] = []
-                for link in links_raw:
-                    link_pano = (link or {}).get("pano") or {}
-                    link_id = link_pano.get("id")
-                    direction = link.get("direction")
-                    if isinstance(link_id, str) and isinstance(direction, (int, float)):
-                        links.append({"id": link_id, "direction": float(direction)})
-                graph[pano_id] = {
-                    "lat": lat,
-                    "lon": lon,
-                    "heading": heading,
-                    "links": links,
-                }
-        # Prune links pointing to non-existent nodes
-        valid_ids = set(graph.keys())
-        for node in graph.values():
-            raw_links = node.get("links", []) or []
-            node["links"] = [
-                link
-                for link in raw_links
-                if isinstance(link, dict)
-                and isinstance(link.get("id"), str)
-                and link["id"] in valid_ids
-            ]
-        return graph
 
     def _set_current_pano(self, pano_id: str) -> None:
         node = self._pano_graph.get(pano_id)

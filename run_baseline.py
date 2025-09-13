@@ -291,7 +291,7 @@ def main():
 
         # Print summary
         if results:
-            scores = [r.get("score", 0) for r in results if r.get("score") is not None]
+            scores = [r["score"] for r in results if r.get("score") is not None]
             if scores:
                 avg_score = sum(scores) / len(scores)
                 print("\nSummary:")

@@ -206,3 +206,4 @@ class ReplayManager:
             Path to the session file
         """
         return str(self.replays_dir / f"session_{seed}.json")
+

@@ -291,3 +291,4 @@ class TestModeHandlerFactory:
                     metadata_dir=str(Path(temp_dir) / "metadata"),
                     images_dir=str(Path(temp_dir) / "images"),
                 )
+

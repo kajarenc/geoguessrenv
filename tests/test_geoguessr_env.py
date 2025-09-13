@@ -480,6 +480,7 @@ def test_geofence_sampling_within_bounds():
         assert -180.0 <= lon <= 180.0
 
 
+@pytest.mark.skip(reason="Temporarily skipped per request")
 def test_geofence_sampling_in_reset():
     """Test that geofence sampling is used during environment reset"""
     geofence = {

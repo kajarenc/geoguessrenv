@@ -17,8 +17,8 @@ def test_config():
         "cache_root": cache_root,
         "input_lat": 47.620908,
         "input_lon": -122.353508,
-        "max_steps": 5,
         "arrow_hit_radius_px": 24,
+        "max_steps": 5,
         "arrow_min_conf": 0.0,
     }
 

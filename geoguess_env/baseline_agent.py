@@ -99,11 +99,10 @@ class BaselineAgent:
         current_steps = info.get("steps", 0)
 
         # Generate sweep positions across the image width
-        # Focus on horizontal sweep at middle height (where arrows typically appear)
+        # Focus on horizontal sweep at middle height
         sweep_clicks = self._generate_sweep_positions(width, height)
 
         # For this baseline, we'll try the first position in our sweep
-        # In a more sophisticated version, we could check if previous clicks worked
         click_x, click_y = sweep_clicks[current_steps % len(sweep_clicks)]
 
         return {"op": "click", "value": [click_x, click_y]}
@@ -128,14 +127,6 @@ class BaselineAgent:
         for i in range(self.sweep_positions):
             x = int((i + 0.5) * width / self.sweep_positions)
             positions.append((x, y_center))
-
-        # Add some variation in vertical positions
-        for i in range(self.sweep_positions // 2):
-            x = int((i + 0.5) * width / (self.sweep_positions // 2))
-            y_upper = int(height * 0.3)  # Upper third
-            y_lower = int(height * 0.7)  # Lower third
-            positions.append((x, y_upper))
-            positions.append((x, y_lower))
 
         return positions
 

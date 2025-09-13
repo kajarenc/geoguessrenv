@@ -9,7 +9,7 @@ This package implements the baseline components specified in TaskDescription.md 
 - Builds prompts explaining the task and allowed actions
 - Parses VLM responses into valid actions
 - Handles malformed JSON with safe fallbacks
-- Action format: `{"op":"click","value":[x,y]}` or `{"op":"answer","value":[lat,lon]}`
+- Action format: `{"op":"click","value":[640,256]}` or `{"op":"answer","value":[47.6205,-122.3493]}`
 
 ### ✅ BaselineAgent (`baseline_agent.py`)
 - Simple arrow-following agent as specified
@@ -29,16 +29,15 @@ This package implements the baseline components specified in TaskDescription.md 
 
 ### Basic Demo
 ```bash
-python demo_baseline_agent.py
+uv run python geoguessr_env_demo.py
 ```
 
 ### CLI Usage (Online Mode)
 ```bash
-python -m geoguess_env.run_baseline \
+uv run python -m geoguess_env.run_baseline \
   --mode online \
   --provider gsv \
   --episodes 30 \
-  --geofence world_small.json \
   --cache ./cache \
   --seed 123 \
   --freeze-run ./cache/replays/session_123.json \
@@ -47,7 +46,7 @@ python -m geoguess_env.run_baseline \
 
 ### CLI Usage (Offline Replay)
 ```bash
-python -m geoguess_env.run_baseline \
+uv run python -m geoguess_env.run_baseline \
   --mode offline \
   --replay ./cache/replays/session_123.json \
   --cache ./cache \
@@ -70,12 +69,12 @@ All components use the standardized action format:
 
 **Click (navigation):**
 ```json
-{"op":"click","value":[x,y]}
+{"op":"click","value":[640,256]}
 ```
 
 **Answer (termination):**
 ```json
-{"op":"answer","value":[lat_deg,lon_deg]}
+{"op":"answer","value":[47.6205,-122.3493]}
 ```
 
 ## CSV Output Format

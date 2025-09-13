@@ -194,13 +194,16 @@ class GeoGuessrEnv(gym.Env):
         if op == 1:
             info["guess_lat"] = float(value[0])
             info["guess_lon"] = float(value[1])
-            distance_km = self._haversine_km(
-                float(self.current_lat),
-                float(self.current_lon),
-                float(value[0]),
-                float(value[1]),
-            )
-            info["distance_km"] = distance_km
+            if self.current_lat is not None and self.current_lon is not None:
+                distance_km = self._haversine_km(
+                    float(self.current_lat),
+                    float(self.current_lon),
+                    float(value[0]),
+                    float(value[1]),
+                )
+                info["distance_km"] = distance_km
+            else:
+                info["distance_km"] = float("inf")  # Unknown distance if no position
             info["score"] = reward
             info["steps"] = self._steps
         return obs, reward, terminated, truncated, info

@@ -123,11 +123,17 @@ def run_online_episodes(args) -> List[Dict]:
     # Load geofence
     geofence = load_geofence(args.geofence)
 
+    # For online mode, we need to sample starting coordinates
+    # For now, use a default location (Seattle) if no geofence is provided
+    default_lat, default_lon = 47.620908, -122.353508
+
     # Create environment config
     env_config = {
         "provider": args.provider,
         "mode": "online",
         "geofence": geofence,
+        "input_lat": default_lat,
+        "input_lon": default_lon,
         "cache_root": args.cache,
         "seed": args.seed,
         "max_steps": 40,  # Environment max steps
@@ -224,17 +230,27 @@ def run_offline_episodes(args) -> List[Dict]:
     for episode_idx, episode_data in enumerate(episodes_data):
         print(f"Episode {episode_idx + 1}/{len(episodes_data)}")
 
-        # Set up environment for this specific episode
-        # This would require environment support for loading specific episodes
-        # For now, we'll do a basic reset
-        observation, info = env.reset()
+        # Set up environment for this specific episode from replay data
+        # Update config with episode-specific data
+        episode_config = env_config.copy()
+        episode_config.update(
+            {
+                "input_lat": episode_data.get("gt_lat"),
+                "input_lon": episode_data.get("gt_lon"),
+                "provider": episode_data.get("provider"),
+            }
+        )
+
+        # Create new environment instance for this episode with specific config
+        env_episode = gym.make(ENV_ID, config=episode_config)
+        observation, info = env_episode.reset()
         agent.reset()
 
         # Run episode
         done = False
         while not done:
             action = agent.act(observation, info)
-            observation, reward, terminated, truncated, info = env.step(action)
+            observation, reward, terminated, truncated, info = env_episode.step(action)
             done = terminated or truncated
 
         # Store results
@@ -251,6 +267,10 @@ def run_offline_episodes(args) -> List[Dict]:
         }
         results.append(result)
 
+        # Close episode environment
+        env_episode.close()
+
+    # Original env is no longer used
     env.close()
     return results
 
@@ -262,7 +282,9 @@ def save_results_csv(results: List[Dict], output_path: str) -> None:
         return
 
     # Ensure output directory exists
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    output_dir = os.path.dirname(output_path)
+    if output_dir:  # Only create directory if there is one
+        os.makedirs(output_dir, exist_ok=True)
 
     fieldnames = [
         "episode",

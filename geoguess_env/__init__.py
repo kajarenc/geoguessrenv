@@ -1,0 +1,1 @@
+# GeoGuessr Environment Package

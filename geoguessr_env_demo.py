@@ -3,7 +3,7 @@ import os
 import gymnasium as gym
 from gymnasium.envs.registration import register
 
-ENV_ID = "GeoGuessrWorld-v0"
+ENV_ID = "GeoGuessr-v0"
 
 
 def ensure_registered() -> None:
@@ -11,7 +11,7 @@ def ensure_registered() -> None:
         # Safe to call repeatedly; ignore if already registered
         register(
             id=ENV_ID,
-            entry_point="gymnasium_env.envs.geoguessr_world:GeoGuessrWorldEnv",
+            entry_point="geoguess_env.geoguessr_env:GeoGuessrEnv",
         )
     except Exception:
         # Likely already registered in this interpreter session
@@ -21,15 +21,17 @@ def ensure_registered() -> None:
 def main() -> None:
     ensure_registered()
 
-    # Use a temp cache directory next to this script
+    # Use cache directory aligned with TaskDescription.md spec
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    cache_root = os.path.join(script_dir, "tempcache")
+    cache_root = os.path.join(script_dir, "cache")
 
     input_lat, input_lon = 51.481610, -0.163400
     env = gym.make(
         ENV_ID,
         render_mode="human",
         config={
+            "provider": "gsv",
+            "mode": "online",
             "cache_root": cache_root,
             "input_lat": input_lat,
             "input_lon": input_lon,

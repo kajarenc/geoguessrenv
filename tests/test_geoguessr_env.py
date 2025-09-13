@@ -5,7 +5,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from gymnasium_env.envs import GeoGuessrWorldEnv
+from geoguess_env.geoguessr_env import GeoGuessrEnv
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def test_config():
 @pytest.fixture
 def env_with_mock_links(test_config):
     """Environment with mocked link data for consistent testing"""
-    env = GeoGuessrWorldEnv(config=test_config)
+    env = GeoGuessrEnv(config=test_config)
 
     # Mock the pano graph with known links at specific positions
     mock_graph = {
@@ -90,7 +90,7 @@ def env_with_mock_links(test_config):
 
 
 def test_answer_action_terminates_episode(test_config):
-    env = GeoGuessrWorldEnv(config=test_config)
+    env = GeoGuessrEnv(config=test_config)
     try:
         obs, info = env.reset()
         assert (
@@ -114,7 +114,7 @@ def test_answer_action_terminates_episode(test_config):
 
 def test_observation_format_and_types(test_config):
     """Test observation format and data types"""
-    env = GeoGuessrWorldEnv(config=test_config)
+    env = GeoGuessrEnv(config=test_config)
     try:
         obs, info = env.reset()
 
@@ -137,7 +137,7 @@ def test_observation_format_and_types(test_config):
         assert isinstance(info["gt_lon"], (int, float))
         assert isinstance(info["steps"], int)
         assert isinstance(info["pose"], dict)
-        assert "heading_deg" in info["pose"]
+        assert "yaw_deg" in info["pose"]
         assert isinstance(info["links"], list)
 
     finally:
@@ -155,7 +155,7 @@ def test_click_within_radius_selects_link():
         "arrow_min_conf": 0.0,
     }
 
-    env = GeoGuessrWorldEnv(config=config)
+    env = GeoGuessrEnv(config=config)
 
     # Mock the pano graph and current state
     mock_graph = {
@@ -217,7 +217,7 @@ def test_click_outside_radius_no_op():
         "arrow_min_conf": 0.0,
     }
 
-    env = GeoGuessrWorldEnv(config=config)
+    env = GeoGuessrEnv(config=config)
 
     # Mock the pano graph and current state
     mock_graph = {
@@ -276,7 +276,7 @@ def test_reward_semantics():
         "max_steps": 10,
     }
 
-    env = GeoGuessrWorldEnv(config=config)
+    env = GeoGuessrEnv(config=config)
 
     # Mock basic state
     env.current_lat = 47.620908
@@ -316,7 +316,7 @@ def test_termination_conditions():
         "max_steps": 3,  # Very small for testing
     }
 
-    env = GeoGuessrWorldEnv(config=config)
+    env = GeoGuessrEnv(config=config)
 
     # Mock basic state
     env.current_lat = 47.620908
@@ -357,7 +357,7 @@ def test_arrow_click_mapping_with_known_coordinates():
         "arrow_hit_radius_px": 24,
     }
 
-    env = GeoGuessrWorldEnv(config=config)
+    env = GeoGuessrEnv(config=config)
 
     # Set up known link positions
     mock_graph = {

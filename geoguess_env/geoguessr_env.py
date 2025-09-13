@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import random
 from typing import Dict, List, Optional, Tuple, Union
 
 import gymnasium as gym
@@ -128,10 +129,14 @@ class GeoGuessrEnv(gym.Env):
             seed = int(self._initial_seed)
         super().reset(seed=seed)
 
+        # Sample coordinates from geofence if provided, otherwise use input coordinates
+        if self.geofence and self.mode == "online":
+            lat, lon = self._sample_from_geofence(seed)
+        else:
+            lat, lon = self.input_lat, self.input_lon
+
         # TODO: improve pano selection logic
-        self.pano_root_id = get_nearest_pano_id(
-            self.input_lat, self.input_lon, self.metadata_dir
-        )
+        self.pano_root_id = get_nearest_pano_id(lat, lon, self.metadata_dir)
         # Ensure directories exist
         os.makedirs(self.metadata_dir, exist_ok=True)
         os.makedirs(self.images_dir, exist_ok=True)
@@ -285,6 +290,73 @@ class GeoGuessrEnv(gym.Env):
                 pass
             self._screen = None
             self._clock = None
+
+    # --- Geofence sampling helpers ---
+    def _sample_from_geofence(self, seed: Optional[int] = None) -> Tuple[float, float]:
+        """
+        Sample coordinates from the configured geofence using seeded RNG.
+
+        Args:
+            seed: Random seed for deterministic sampling
+
+        Returns:
+            Tuple of (latitude, longitude) within the geofence
+        """
+        if not self.geofence:
+            raise ValueError("No geofence configured for sampling")
+
+        # Use a separate random instance for geofence sampling to ensure determinism
+        rng = random.Random(seed)
+
+        geofence_type = self.geofence.get("type")
+        if geofence_type == "circle":
+            return self._sample_from_circular_geofence(self.geofence, rng)
+        else:
+            raise ValueError(f"Unsupported geofence type: {geofence_type}")
+
+    def _sample_from_circular_geofence(
+        self, geofence: Dict, rng: random.Random
+    ) -> Tuple[float, float]:
+        """
+        Sample coordinates from a circular geofence.
+
+        Args:
+            geofence: Circular geofence configuration
+            rng: Random number generator instance
+
+        Returns:
+            Tuple of (latitude, longitude) within the circle
+        """
+        center = geofence.get("center", {})
+        center_lat = center.get("lat")
+        center_lon = center.get("lon")
+        radius_km = geofence.get("radius_km")
+
+        if None in (center_lat, center_lon, radius_km):
+            raise ValueError(
+                "Invalid circular geofence: missing center lat/lon or radius_km"
+            )
+
+        # Sample a point uniformly within the circle
+        # Use sqrt to get uniform distribution by area
+        r = radius_km * math.sqrt(rng.random())
+        theta = 2 * math.pi * rng.random()
+
+        # Convert to lat/lon offset
+        # Approximate conversion: 1 degree lat ≈ 111 km, 1 degree lon ≈ 111 km * cos(lat)
+        lat_offset = (r * math.cos(theta)) / 111.0
+        lon_offset = (r * math.sin(theta)) / (
+            111.0 * math.cos(math.radians(center_lat))
+        )
+
+        sample_lat = center_lat + lat_offset
+        sample_lon = center_lon + lon_offset
+
+        # Clamp to valid ranges
+        sample_lat = max(-90.0, min(90.0, sample_lat))
+        sample_lon = max(-180.0, min(180.0, sample_lon))
+
+        return sample_lat, sample_lon
 
     # --- Helpers ---
     def _load_minimetadata(self, jsonl_path: str) -> Dict[str, Dict]:

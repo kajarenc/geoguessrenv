@@ -226,9 +226,7 @@ class GeoGuessrWorldEnv(gym.Env):
             gt_lon = node.get("lon", lon)
 
             # Record episode if in online mode with recording
-            if self.mode == "online" and hasattr(
-                self._replay_manager, "current_session"
-            ):
+            if self.mode == "online" and self._replay_manager.current_session is not None:
                 self._replay_manager.add_episode_to_session(
                     provider=self.provider or "gsv",
                     pano_id=self.pano_root_id,

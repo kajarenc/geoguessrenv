@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import os
 import time
 from typing import Any, Dict, List
 
 from agents.base import AgentConfig, BaseAgent
 from agents.openai_models import AnswerParams, ClickParams
+from geoguess_env.vlm_broker import VLMBroker
 
 from .utils import (
     cache_get,
@@ -36,6 +36,8 @@ class OpenAIVisionAgent(BaseAgent):
             pass
         api_key = os.getenv("OPENAI_API_KEY")
         self._client = OpenAI(api_key=api_key) if api_key else OpenAI()
+        # Broker for standardized prompt and parsing
+        self._broker = VLMBroker()
 
     def reset(self) -> None:
         return None
@@ -69,35 +71,26 @@ class OpenAIVisionAgent(BaseAgent):
             action = self._parse_action_or_fallback(cached, links)
             return action
 
-        # Build messages
+        # Build messages using VLMBroker prompt, augmented for tool-calling
         b64_image = encode_image_to_jpeg_base64(np_image, quality=95)
-        system_prompt = (
-            "You are navigating Street View-like panoramas. You can either click a link to move "
-            "(by using the exact provided screen_xy) or answer with a final latitude/longitude. "
-            "If you have a good guess, prefer answering. "
-            "You MUST respond by calling a tool ('click' or 'answer') with appropriate arguments. "
-            "Never output free-form text or JSON in the message; only call the tool."
-        )
-
-        link_list_str = json.dumps(
-            [
-                {
-                    "id": link.get("id"),
-                    "heading_deg": link.get("heading_deg"),
-                    "screen_xy": link.get("screen_xy"),
-                }
-                for link in links
-            ]
-        )
         force_answer = meta["max_steps"] - meta["steps"] <= 3
-        user_text = (
-            f"pano_id={meta['pano_id']} **steps={meta['steps']}** max_steps={meta['max_steps']} heading_deg={meta['heading_deg']}\n"
-            f"links={link_list_str}\n"
-            "Rules: To move, choose a link and click exactly its screen_xy center."
-            "Answer with lat/lon for final answer. "
+        broker_prompt = self._broker.build_prompt(
+            np_image,
+            {"yaw_deg": meta["heading_deg"]},
+        )
+        # Align broker prompt with tool-calling API
+        tool_instructions = (
+            "You MUST respond by calling exactly one tool: 'click' or 'answer'. "
+            "Never output free-form text or JSON in your message; only call the tool."
         )
         if force_answer:
-            user_text += "You MUST return answer this time!!!"
+            tool_instructions += " You MUST call the 'answer' tool now."
+        system_prompt = "You are assisting with GeoGuessr navigation. Use structured tool calls only."
+        user_text = (
+            f"pano_id={meta['pano_id']} steps={meta['steps']}/{meta['max_steps']} heading_deg={meta['heading_deg']}\n\n"
+            f"{broker_prompt}\n\n"
+            f"{tool_instructions}"
+        )
         print("USER TEXT: ", user_text, "\n")
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
@@ -122,7 +115,9 @@ class OpenAIVisionAgent(BaseAgent):
         )
 
         response = self._chat_completions(messages)
-        action = self._parse_action_or_fallback(response, links)
+        action = self._parse_action_or_fallback(
+            response, links, image_shape=np_image.shape
+        )
         print("ACTION: ", action, "\n")
 
         if self.config.cache_dir:
@@ -177,7 +172,22 @@ class OpenAIVisionAgent(BaseAgent):
                     except Exception:
                         # Try next tool call if parsing one fails
                         continue
-                # If no tool call returned the expected function, fall through to retry
+                # If no tool call returned the expected function, attempt to extract text
+                try:
+                    content = getattr(msg, "content", None)
+                    if isinstance(content, str) and content.strip():
+                        return {"raw_text": content}
+                    if isinstance(content, list):
+                        texts = [
+                            part.get("text", "")
+                            for part in content
+                            if isinstance(part, dict) and part.get("type") == "text"
+                        ]
+                        text_joined = "\n".join(t for t in texts if t)
+                        if text_joined.strip():
+                            return {"raw_text": text_joined}
+                except Exception:
+                    pass
             except Exception:
                 time.sleep(0.8 * (2**attempt))
         # As a fallback, return empty dict to trigger heuristic
@@ -185,7 +195,10 @@ class OpenAIVisionAgent(BaseAgent):
 
     # --- Parsing and fallback ---
     def _parse_action_or_fallback(
-        self, data: Dict[str, Any], links: List[Dict[str, Any]]
+        self,
+        data: Dict[str, Any],
+        links: List[Dict[str, Any]],
+        image_shape: Any | None = None,
     ) -> Dict[str, Any]:
         try:
             op = data.get("op")
@@ -203,6 +216,26 @@ class OpenAIVisionAgent(BaseAgent):
                 lat = max(-90.0, min(90.0, lat))
                 lon = max(-180.0, min(180.0, lon))
                 return {"op": "answer", "answer": [lat, lon]}
+            # If the model returned raw text (no tool call), parse via broker
+            raw_text = data.get("raw_text")
+            if isinstance(raw_text, str) and raw_text.strip():
+                h = self.config.image_height
+                w = self.config.image_width
+                if image_shape and len(image_shape) >= 2:
+                    h = int(image_shape[0])
+                    w = int(image_shape[1])
+                parsed = self._broker.parse_action(
+                    raw_text, image_width=w, image_height=h
+                )
+                if parsed.get("op") == "click":
+                    vx, vy = parsed.get("value", [w // 2, h // 2])
+                    sx, sy = self._snap_to_nearest_link(int(vx), int(vy), links)
+                    return {"op": "click", "click": [sx, sy]}
+                if parsed.get("op") == "answer":
+                    vlat, vlon = parsed.get("value", [0.0, 0.0])
+                    vlat = max(-90.0, min(90.0, float(vlat)))
+                    vlon = max(-180.0, min(180.0, float(vlon)))
+                    return {"op": "answer", "answer": [vlat, vlon]}
         except Exception:
             pass
         # Heuristic: if any links exist, click the first one's center; else answer (0,0)

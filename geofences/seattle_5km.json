@@ -1,0 +1,10 @@
+{
+  "type": "circle",
+  "center": {
+    "lat": 47.620908,
+    "lon": -122.353508
+  },
+  "radius_km": 5.0,
+  "name": "Seattle 10km radius",
+  "description": "Circular geofence centered on Seattle with 5 kilometer radius"
+}

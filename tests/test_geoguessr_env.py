@@ -5,7 +5,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from gymnasium_env.envs import GeoGuessrWorldEnv
+from geoguess_env.geoguessr_env import GeoGuessrEnv
 
 
 @pytest.fixture
@@ -17,8 +17,8 @@ def test_config():
         "cache_root": cache_root,
         "input_lat": 47.620908,
         "input_lon": -122.353508,
-        "max_steps": 5,
         "arrow_hit_radius_px": 24,
+        "max_steps": 5,
         "arrow_min_conf": 0.0,
     }
 
@@ -26,7 +26,7 @@ def test_config():
 @pytest.fixture
 def env_with_mock_links(test_config):
     """Environment with mocked link data for consistent testing"""
-    env = GeoGuessrWorldEnv(config=test_config)
+    env = GeoGuessrEnv(config=test_config)
 
     # Mock the pano graph with known links at specific positions
     mock_graph = {
@@ -90,7 +90,7 @@ def env_with_mock_links(test_config):
 
 
 def test_answer_action_terminates_episode(test_config):
-    env = GeoGuessrWorldEnv(config=test_config)
+    env = GeoGuessrEnv(config=test_config)
     try:
         obs, info = env.reset()
         assert (
@@ -114,7 +114,7 @@ def test_answer_action_terminates_episode(test_config):
 
 def test_observation_format_and_types(test_config):
     """Test observation format and data types"""
-    env = GeoGuessrWorldEnv(config=test_config)
+    env = GeoGuessrEnv(config=test_config)
     try:
         obs, info = env.reset()
 
@@ -137,7 +137,7 @@ def test_observation_format_and_types(test_config):
         assert isinstance(info["gt_lon"], (int, float))
         assert isinstance(info["steps"], int)
         assert isinstance(info["pose"], dict)
-        assert "heading_deg" in info["pose"]
+        assert "yaw_deg" in info["pose"]
         assert isinstance(info["links"], list)
 
     finally:
@@ -155,7 +155,7 @@ def test_click_within_radius_selects_link():
         "arrow_min_conf": 0.0,
     }
 
-    env = GeoGuessrWorldEnv(config=config)
+    env = GeoGuessrEnv(config=config)
 
     # Mock the pano graph and current state
     mock_graph = {
@@ -217,7 +217,7 @@ def test_click_outside_radius_no_op():
         "arrow_min_conf": 0.0,
     }
 
-    env = GeoGuessrWorldEnv(config=config)
+    env = GeoGuessrEnv(config=config)
 
     # Mock the pano graph and current state
     mock_graph = {
@@ -276,7 +276,7 @@ def test_reward_semantics():
         "max_steps": 10,
     }
 
-    env = GeoGuessrWorldEnv(config=config)
+    env = GeoGuessrEnv(config=config)
 
     # Mock basic state
     env.current_lat = 47.620908
@@ -316,7 +316,7 @@ def test_termination_conditions():
         "max_steps": 3,  # Very small for testing
     }
 
-    env = GeoGuessrWorldEnv(config=config)
+    env = GeoGuessrEnv(config=config)
 
     # Mock basic state
     env.current_lat = 47.620908
@@ -357,7 +357,7 @@ def test_arrow_click_mapping_with_known_coordinates():
         "arrow_hit_radius_px": 24,
     }
 
-    env = GeoGuessrWorldEnv(config=config)
+    env = GeoGuessrEnv(config=config)
 
     # Set up known link positions
     mock_graph = {
@@ -413,3 +413,199 @@ def test_arrow_click_mapping_with_known_coordinates():
             assert env.current_pano_id == expected_target
             assert reward == 0.0
             assert not terminated
+
+
+def test_geofence_sampling_deterministic():
+    """Test that geofence sampling is deterministic with same seed"""
+    geofence = {
+        "type": "circle",
+        "center": {"lat": 47.620908, "lon": -122.353508},
+        "radius_km": 10.0,
+    }
+
+    config = {
+        "cache_root": "/tmp",
+        "mode": "online",
+        "geofence": geofence,
+        "max_steps": 5,
+    }
+
+    env = GeoGuessrEnv(config=config)
+
+    # Sample with same seed should produce identical results
+    seed = 42
+    lat1, lon1 = env._sample_from_geofence(seed)
+    lat2, lon2 = env._sample_from_geofence(seed)
+
+    assert lat1 == lat2
+    assert lon1 == lon2
+
+    # Different seeds should produce different results (very high probability)
+    lat3, lon3 = env._sample_from_geofence(seed + 1)
+    assert lat3 != lat1 or lon3 != lon1
+
+
+def test_geofence_sampling_within_bounds():
+    """Test that geofence sampling produces coordinates within the specified circle"""
+    center_lat, center_lon = 47.620908, -122.353508
+    radius_km = 10.0
+
+    geofence = {
+        "type": "circle",
+        "center": {"lat": center_lat, "lon": center_lon},
+        "radius_km": radius_km,
+    }
+
+    config = {
+        "cache_root": "/tmp",
+        "mode": "online",
+        "geofence": geofence,
+        "max_steps": 5,
+    }
+
+    env = GeoGuessrEnv(config=config)
+
+    # Test multiple samples to ensure they're all within bounds
+    for i in range(10):
+        lat, lon = env._sample_from_geofence(i)
+
+        # Compute distance from center using Haversine formula
+        distance_km = env._haversine_km(center_lat, center_lon, lat, lon)
+
+        # Should be within the radius (allowing for small numerical errors)
+        assert distance_km <= radius_km + 0.001
+
+        # Should be within valid lat/lon ranges
+        assert -90.0 <= lat <= 90.0
+        assert -180.0 <= lon <= 180.0
+
+
+def test_geofence_sampling_in_reset():
+    """Test that geofence sampling is used during environment reset"""
+    geofence = {
+        "type": "circle",
+        "center": {"lat": 47.620908, "lon": -122.353508},
+        "radius_km": 1.0,
+    }
+
+    config = {
+        "cache_root": "/tmp",
+        "mode": "online",
+        "geofence": geofence,
+        "max_steps": 5,
+        "seed": 123,
+    }
+
+    env = GeoGuessrEnv(config=config)
+
+    # Mock the methods that require actual data fetching
+    with (
+        patch("geoguess_env.geoguessr_env.get_nearest_pano_id") as mock_get_pano,
+        patch.object(env, "_load_minimetadata") as mock_load_meta,
+    ):
+        mock_get_pano.return_value = "test_pano"
+        mock_load_meta.return_value = {
+            "test_pano": {
+                "lat": 47.620908,
+                "lon": -122.353508,
+                "heading": 0.0,
+                "links": [],
+            }
+        }
+
+        # Mock image for observation
+        test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
+        with patch.object(env, "_get_observation", return_value={"image": test_image}):
+            obs, info = env.reset()
+
+            # Verify that sampling was called (coordinates should be different from defaults)
+            # Since we're using geofence sampling, the lat/lon should be within the geofence
+            gt_lat = info.get("gt_lat")
+            gt_lon = info.get("gt_lon")
+
+            if gt_lat is not None and gt_lon is not None:
+                center_lat, center_lon = 47.620908, -122.353508
+                distance_km = env._haversine_km(center_lat, center_lon, gt_lat, gt_lon)
+                assert distance_km <= 1.0  # Within the geofence radius
+
+
+def test_geofence_sampling_with_fallback():
+    """Test that environment falls back to input coordinates when geofence not available"""
+    input_lat, input_lon = 40.7128, -74.0060  # NYC coordinates
+
+    config = {
+        "cache_root": "/tmp",
+        "mode": "online",
+        "input_lat": input_lat,
+        "input_lon": input_lon,
+        "max_steps": 5,
+    }
+
+    env = GeoGuessrEnv(config=config)
+
+    # Mock the methods that require actual data fetching
+    with (
+        patch("geoguess_env.geoguessr_env.get_nearest_pano_id") as mock_get_pano,
+        patch.object(env, "_load_minimetadata") as mock_load_meta,
+    ):
+        mock_get_pano.return_value = "test_pano"
+        mock_load_meta.return_value = {
+            "test_pano": {
+                "lat": input_lat,
+                "lon": input_lon,
+                "heading": 0.0,
+                "links": [],
+            }
+        }
+
+        # Mock image for observation
+        test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
+        with patch.object(env, "_get_observation", return_value={"image": test_image}):
+            obs, info = env.reset()
+
+            # get_nearest_pano_id should have been called with the input coordinates
+            mock_get_pano.assert_called_once_with(
+                input_lat, input_lon, env.metadata_dir
+            )
+
+
+def test_geofence_invalid_type():
+    """Test that invalid geofence type raises error"""
+    geofence = {
+        "type": "polygon",  # Unsupported type
+        "center": {"lat": 47.620908, "lon": -122.353508},
+        "radius_km": 10.0,
+    }
+
+    config = {
+        "cache_root": "/tmp",
+        "mode": "online",
+        "geofence": geofence,
+        "max_steps": 5,
+    }
+
+    env = GeoGuessrEnv(config=config)
+
+    with pytest.raises(ValueError, match="Unsupported geofence type"):
+        env._sample_from_geofence(42)
+
+
+def test_geofence_invalid_circular_config():
+    """Test that invalid circular geofence config raises error"""
+    geofence = {
+        "type": "circle",
+        "center": {"lat": 47.620908},  # Missing lon
+        "radius_km": 10.0,
+    }
+
+    config = {
+        "cache_root": "/tmp",
+        "mode": "online",
+        "geofence": geofence,
+        "max_steps": 5,
+    }
+
+    env = GeoGuessrEnv(config=config)
+
+    with pytest.raises(ValueError, match="Invalid circular geofence"):
+        env._sample_from_geofence(42)

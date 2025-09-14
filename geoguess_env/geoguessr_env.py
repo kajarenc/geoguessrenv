@@ -141,7 +141,11 @@ class GeoGuessrEnv(gym.Env):
 
         # TODO[Karen]: improve pano fetching logic, don't fetch optimistically
         # TODO[Karen]: skip if malformed image appears
-        self.pano_root_id = get_nearest_pano_id(lat, lon, self.metadata_dir)
+        pano_id = get_nearest_pano_id(lat, lon, self.metadata_dir)
+        if pano_id is not None:
+            self.pano_root_id = pano_id
+        else:
+            raise ValueError(f"No pano found for coordinates: {lat}, {lon}")
         # Ensure directories exist
         os.makedirs(self.metadata_dir, exist_ok=True)
         os.makedirs(self.images_dir, exist_ok=True)

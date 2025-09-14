@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Run OpenAI agent in GeoGuessrWorldEnv")
     p.add_argument("--model", default="gpt-4o")
     p.add_argument("--temperature", type=float, default=0.0)
-    p.add_argument("--max_nav_steps", type=int, default=40)
+    p.add_argument("--max_nav_steps", type=int, default=10)
     p.add_argument("--image_width", type=int, default=1024)
     p.add_argument("--image_height", type=int, default=512)
     p.add_argument("--input_lat", type=float, default=51.481610)

@@ -53,15 +53,28 @@ Example:
 
 ```bash
 export OPENAI_API_KEY=sk-...
- uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 10 --input_lat 47.620908 --input_lon -122.353508 --render
+uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 10 --input_lat 47.620908 --input_lon -122.353508 --render
 ```
 
 Arguments:
 - `--model`: OpenAI vision model (default `gpt-4o`).
-- `--max_nav_steps`: Maximum navigation steps before answering (default `40`).
+- `--max_nav_steps`: Maximum navigation steps before answering (default `10`).
 - `--image_width/--image_height`: Image size sent to the model (defaults `1024x512`).
 - `--input_lat/--input_lon`: Seed location for fetching nearby panoramas.
 - `--cache_root`: Where the environment stores images/metadata (defaults to `tempcache`).
 - `--cache_dir`: Optional local cache directory for agent responses.
 - `--render`: Show a Pygame window while running.
+
+
+Run the baseline agent with geofence:
+```
+uv run python -m geoguess_env.run_baseline \
+  --mode online \
+  --provider gsv \
+  --episodes 2 \
+  --geofence geofences/seattle_5km.json \
+  --cache ./cache \
+  --seed 22 \
+  --out results_online.csv
+```
 

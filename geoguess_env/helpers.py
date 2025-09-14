@@ -70,7 +70,17 @@ def get_nearest_pano_id(
         for pano in panos_sorted:
             print(pano.date)
 
-        result = panos_sorted[0].pano_id
+        # Get first not None pano_id
+        for pano in panos_sorted:
+            if pano.pano_id is not None:
+                result = pano.pano_id
+                break
+        else:
+            result = None
+            print(
+                "Could not find a valid pano_id in the search results for given coordinates"
+            )
+        return result
 
     # Persist into cache if applicable
     if cache_path is not None:

@@ -160,7 +160,7 @@ def run_online_episodes(args) -> List[Dict]:
             "pano_id": info.get("pano_id"),
             "gt_lat": info.get("gt_lat"),
             "gt_lon": info.get("gt_lon"),
-            "initial_yaw_deg": info.get("pose", {}).get("heading_deg", 0.0),
+            "initial_yaw_deg": info.get("pose", {}).get("yaw_deg", 0.0),
         }
 
         # Run episode

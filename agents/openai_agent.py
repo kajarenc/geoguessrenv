@@ -43,15 +43,22 @@ class OpenAIVisionAgent(BaseAgent):
     def act(self, observation, info: Dict[str, Any]) -> Dict[str, Any]:
         # Prepare inputs
         links = info.get("links", []) or []
+        pose = info.get("pose") or {}
+        heading_deg = pose.get("yaw_deg")
+        if heading_deg is None:
+            heading_deg = pose.get("heading_deg")
         meta = {
             "pano_id": info.get("pano_id"),
             "steps": info.get("steps"),
-            "heading_deg": (info.get("pose") or {}).get("heading_deg"),
+            "heading_deg": heading_deg,
             "max_steps": int(self.config.max_nav_steps),
         }
 
         # Optional caching
-        image_hash = compute_image_hash(observation)
+        np_image = (
+            observation if hasattr(observation, "shape") else observation.get("image")
+        )
+        image_hash = compute_image_hash(np_image)
         fingerprint = compute_prompt_fingerprint(image_hash, links, meta)
         cached = (
             cache_get(self.config.cache_dir, fingerprint)
@@ -63,7 +70,7 @@ class OpenAIVisionAgent(BaseAgent):
             return action
 
         # Build messages
-        b64_image = encode_image_to_jpeg_base64(observation, quality=95)
+        b64_image = encode_image_to_jpeg_base64(np_image, quality=95)
         system_prompt = (
             "You are navigating Street View-like panoramas. You can either click a link to move "
             "(by using the exact provided screen_xy) or answer with a final latitude/longitude. "

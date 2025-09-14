@@ -14,7 +14,7 @@ def ensure_registered() -> None:
     try:
         register(
             id=ENV_ID,
-            entry_point="gymnasium_env.envs.geoguessr_world:GeoGuessrWorldEnv",
+            entry_point="geoguess_env.geoguessr_env:GeoGuessrEnv",
         )
     except Exception:
         pass

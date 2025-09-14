@@ -119,7 +119,11 @@ class GeoGuessrEnv(gym.Env):
             "gt_lat": self.current_lat,
             "gt_lon": self.current_lon,
             "steps": self._steps,
-            "pose": {"heading_deg": math.degrees(self._heading_rad) % 360.0},
+            # Provide both yaw_deg (preferred) and heading_deg (compat) in degrees
+            "pose": {
+                "yaw_deg": math.degrees(self._heading_rad) % 360.0,
+                "heading_deg": math.degrees(self._heading_rad) % 360.0,
+            },
             "links": links_with_screen,
         }
 
@@ -135,7 +139,8 @@ class GeoGuessrEnv(gym.Env):
         else:
             lat, lon = self.input_lat, self.input_lon
 
-        # TODO: improve pano selection logic
+        # TODO[Karen]: improve pano fetching logic, don't fetch optimistically
+        # TODO[Karen]: skip if malformed image appears
         self.pano_root_id = get_nearest_pano_id(lat, lon, self.metadata_dir)
         # Ensure directories exist
         os.makedirs(self.metadata_dir, exist_ok=True)

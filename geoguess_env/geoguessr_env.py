@@ -119,7 +119,7 @@ class GeoGuessrEnv(gym.Env):
             "gt_lat": self.current_lat,
             "gt_lon": self.current_lon,
             "steps": self._steps,
-            "pose": {"yaw_deg": math.degrees(self._heading_rad) % 360.0},
+            "pose": {"heading_deg": math.degrees(self._heading_rad) % 360.0},
             "links": links_with_screen,
         }
 

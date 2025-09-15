@@ -208,14 +208,14 @@ class OpenAIVisionAgent(BaseAgent):
                 y = int(click.get("y"))
                 # Snap to nearest provided link center to guarantee hit
                 x, y = self._snap_to_nearest_link(x, y, links)
-                return {"op": "click", "click": [x, y]}
+                return {"op": "click", "value": [x, y]}
             if op == "answer":
                 ans = data.get("answer") or {}
                 lat = float(ans.get("lat"))
                 lon = float(ans.get("lon"))
                 lat = max(-90.0, min(90.0, lat))
                 lon = max(-180.0, min(180.0, lon))
-                return {"op": "answer", "answer": [lat, lon]}
+                return {"op": "answer", "value": [lat, lon]}
             # If the model returned raw text (no tool call), parse via broker
             raw_text = data.get("raw_text")
             if isinstance(raw_text, str) and raw_text.strip():
@@ -230,19 +230,19 @@ class OpenAIVisionAgent(BaseAgent):
                 if parsed.get("op") == "click":
                     vx, vy = parsed.get("value", [w // 2, h // 2])
                     sx, sy = self._snap_to_nearest_link(int(vx), int(vy), links)
-                    return {"op": "click", "click": [sx, sy]}
+                    return {"op": "click", "value": [sx, sy]}
                 if parsed.get("op") == "answer":
                     vlat, vlon = parsed.get("value", [0.0, 0.0])
                     vlat = max(-90.0, min(90.0, float(vlat)))
                     vlon = max(-180.0, min(180.0, float(vlon)))
-                    return {"op": "answer", "answer": [vlat, vlon]}
+                    return {"op": "answer", "value": [vlat, vlon]}
         except Exception:
             pass
         # Heuristic: if any links exist, click the first one's center; else answer (0,0)
         if links:
             sx, sy = links[0].get("screen_xy", [512, 256])
-            return {"op": "click", "click": [int(sx), int(sy)]}
-        return {"op": "answer", "answer": [0.0, 0.0]}
+            return {"op": "click", "value": [int(sx), int(sy)]}
+        return {"op": "answer", "value": [0.0, 0.0]}
 
     def _tools_schema(self, force_answer: bool = False) -> List[Dict[str, Any]]:
         tools: List[Dict[str, Any]] = []

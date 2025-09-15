@@ -127,19 +127,21 @@ def run_online_episodes(args) -> List[Dict]:
     # For now, use a default location (Seattle) if no geofence is provided
     default_lat, default_lon = 47.620908, -122.353508
 
-    # Create environment config
-    env_config = {
+    # Create base environment config
+    base_env_config = {
         "provider": args.provider,
         "mode": "online",
         "geofence": geofence,
-        "input_lat": default_lat,
-        "input_lon": default_lon,
         "cache_root": args.cache,
         "seed": args.seed,
         "max_steps": 40,  # Environment max steps
     }
 
-    env = gym.make(ENV_ID, config=env_config)
+    # If geofence is provided, don't set default coordinates - let the environment sample them
+    if not geofence:
+        base_env_config["input_lat"] = default_lat
+        base_env_config["input_lon"] = default_lon
+
     agent = BaselineAgent(max_nav_steps=args.max_nav_steps, seed=args.seed)
 
     results = []
@@ -149,6 +151,16 @@ def run_online_episodes(args) -> List[Dict]:
 
     for episode_idx in range(args.episodes):
         print(f"Episode {episode_idx + 1}/{args.episodes}")
+
+        # Create environment for this episode
+        episode_config = base_env_config.copy()
+
+        # For each episode, set a unique seed to get different locations from geofence
+        if geofence:
+            episode_seed = args.seed + episode_idx if args.seed else episode_idx
+            episode_config["seed"] = episode_seed
+
+        env = gym.make(ENV_ID, config=episode_config)
 
         # Reset environment and agent
         observation, info = env.reset()
@@ -185,7 +197,8 @@ def run_online_episodes(args) -> List[Dict]:
         results.append(result)
         episodes_data.append(episode_data)
 
-    env.close()
+        # Close episode environment
+        env.close()
 
     # Save replay session if requested
     if args.freeze_run:

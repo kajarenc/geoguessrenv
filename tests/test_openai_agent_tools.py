@@ -46,7 +46,7 @@ def test_act_click_snaps_to_nearest_link():
 
     # Should snap to the nearest provided link center (942, 256)
     assert action["op"] == "click"
-    assert action["click"] == [942, 256]
+    assert action["value"] == [942, 256]
 
 
 @pytest.mark.skipif(
@@ -63,7 +63,7 @@ def test_act_answer_is_clamped():
 
     assert action["op"] == "answer"
     # Expect clamping to [-90, 90] and [-180, 180]
-    assert action["answer"] == [90.0, -180.0]
+    assert action["value"] == [90.0, -180.0]
 
 
 @pytest.mark.skipif(
@@ -78,7 +78,7 @@ def test_fallback_click_then_answer():
     info = _info_with_links(steps=0)
     action_click = agent_click.act(obs, info)
     assert action_click["op"] == "click"
-    assert action_click["click"] == [942, 256]
+    assert action_click["value"] == [942, 256]
 
     # Case 2: No valid tool call data; no links -> answer (0,0)
     agent_answer = StubAgent(cfg, {})
@@ -90,4 +90,4 @@ def test_fallback_click_then_answer():
     }
     action_answer = agent_answer.act(obs, info2)
     assert action_answer["op"] == "answer"
-    assert action_answer["answer"] == [0.0, 0.0]
+    assert action_answer["value"] == [0.0, 0.0]

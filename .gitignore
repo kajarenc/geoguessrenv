@@ -174,7 +174,7 @@ poetry.toml
 pyrightconfig.json
 
 gymnasium_env/load/podzdamerplatzimages/
-#cache/
+cache/
 
 # macOS
 .DS_Store

@@ -537,9 +537,28 @@ class GeoGuessrEnv(gym.Env):
         node = self._pano_graph.get(self.current_pano_id, {})
         pano_heading = node.get("heading", 0.0)
         current_heading_deg = math.degrees(self._heading_rad)
+        # Normalize link directions: metadata may store radians. Convert to degrees.
+        normalized_links: List[Dict[str, object]] = []
+        two_pi = 2.0 * math.pi
+        for link in self.current_links or []:
+            try:
+                raw_dir = float(link.get("direction", 0.0))
+            except Exception:
+                raw_dir = 0.0
+            # If value looks like radians (|dir| <= 2π + epsilon), convert to degrees
+            if abs(raw_dir) <= (two_pi + 1e-6):
+                direction_deg = (math.degrees(raw_dir)) % 360.0
+            else:
+                direction_deg = float(raw_dir) % 360.0
+            normalized_links.append(
+                {
+                    "id": link.get("id"),
+                    "direction": direction_deg,
+                }
+            )
 
         return GeometryUtils.compute_link_screen_positions(
-            links=self.current_links,
+            links=normalized_links,
             pano_heading=pano_heading,
             current_heading=current_heading_deg,
             image_width=self._image_width,

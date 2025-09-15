@@ -1,6 +1,4 @@
-import json
 import math
-import os
 import random
 from typing import Dict, List, Optional, Tuple
 
@@ -446,48 +444,6 @@ class GeoGuessrEnv(gym.Env):
         )
 
     # --- Helpers ---
-    def _load_minimetadata(self, jsonl_path: str) -> Dict[str, Dict]:
-        graph: Dict[str, Dict] = {}
-        if not os.path.isfile(jsonl_path):
-            raise FileNotFoundError(f"Metadata file not found: {jsonl_path}")
-        with open(jsonl_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                data = json.loads(line)
-                pano_id = data.get("id")
-                if not pano_id:
-                    continue
-                lat = data.get("lat")
-                lon = data.get("lon")
-                heading = data.get("heading")
-                links_raw = data.get("links", []) or []
-                links: List[Dict[str, object]] = []
-                for link in links_raw:
-                    link_pano = (link or {}).get("pano") or {}
-                    link_id = link_pano.get("id")
-                    direction = link.get("direction")
-                    if isinstance(link_id, str) and isinstance(direction, (int, float)):
-                        links.append({"id": link_id, "direction": float(direction)})
-                graph[pano_id] = {
-                    "lat": lat,
-                    "lon": lon,
-                    "heading": heading,
-                    "links": links,
-                }
-        # Prune links pointing to non-existent nodes
-        valid_ids = set(graph.keys())
-        for node in graph.values():
-            raw_links = node.get("links", []) or []
-            node["links"] = [
-                link
-                for link in raw_links
-                if isinstance(link, dict)
-                and isinstance(link.get("id"), str)
-                and link["id"] in valid_ids
-            ]
-        return graph
 
     def _set_current_pano(self, pano_id: str) -> None:
         node = self._pano_graph.get(pano_id)

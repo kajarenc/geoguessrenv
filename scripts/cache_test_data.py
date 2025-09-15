@@ -27,7 +27,7 @@ def cache_test_data():
 
     # Configure environment for online mode to fetch data
     config = {
-        "cache_root": str(repo_root / "tempcache"),
+        "cache_root": str(repo_root / "cache"),
         "mode": "online",  # Enable online fetching
         "input_lat": test_lat,
         "input_lon": test_lon,

@@ -539,17 +539,18 @@ class GeoGuessrEnv(gym.Env):
         current_heading_deg = math.degrees(self._heading_rad)
         # Normalize link directions: metadata may store radians. Convert to degrees.
         normalized_links: List[Dict[str, object]] = []
-        two_pi = 2.0 * math.pi
         for link in self.current_links or []:
             try:
                 raw_dir = float(link.get("direction", 0.0))
             except Exception:
                 raw_dir = 0.0
-            # If value looks like radians (|dir| <= 2π + epsilon), convert to degrees
-            if abs(raw_dir) <= (two_pi + 1e-6):
-                direction_deg = (math.degrees(raw_dir)) % 360.0
+
+            # Direction may be provided in degrees (0-360) or radians.
+            # Heuristic: if value is within [0, 2π], treat as radians; otherwise degrees.
+            if 0 <= raw_dir <= 2.0 * math.pi:
+                direction_deg = math.degrees(raw_dir) % 360.0
             else:
-                direction_deg = float(raw_dir) % 360.0
+                direction_deg = raw_dir % 360.0
             normalized_links.append(
                 {
                     "id": link.get("id"),

@@ -48,7 +48,7 @@ def main() -> None:
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    cache_root = args.cache_root or os.path.join(project_root, "tempcache")
+    cache_root = args.cache_root or os.path.join(project_root, "cache")
 
     env = gym.make(
         ENV_ID,

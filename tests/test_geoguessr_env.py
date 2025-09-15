@@ -12,7 +12,7 @@ from geoguess_env.geometry_utils import GeometryUtils
 def test_config():
     """Basic config for testing"""
     repo_root = Path(__file__).resolve().parents[1]
-    cache_root = str(repo_root / "tempcache")
+    cache_root = str(repo_root / "cache")
     return {
         "cache_root": cache_root,
         "input_lat": 47.620908,

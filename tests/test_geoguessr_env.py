@@ -23,6 +23,21 @@ def test_config():
 
 
 @pytest.fixture
+def test_config_with_fixtures():
+    """Config for tests that need real cached data from fixtures"""
+    repo_root = Path(__file__).resolve().parents[1]
+    cache_root = str(repo_root / "tests" / "fixtures")
+    return {
+        "cache_root": cache_root,
+        "input_lat": 47.620908,
+        "input_lon": -122.353508,
+        "arrow_hit_radius_px": 24,
+        "max_steps": 5,
+        "arrow_min_conf": 0.0,
+    }
+
+
+@pytest.fixture
 def env_with_mock_links(test_config):
     """Environment with mocked link data for consistent testing"""
     env = GeoGuessrEnv(config=test_config)
@@ -88,8 +103,8 @@ def env_with_mock_links(test_config):
     return env
 
 
-def test_answer_action_terminates_episode(test_config):
-    env = GeoGuessrEnv(config=test_config)
+def test_answer_action_terminates_episode(test_config_with_fixtures):
+    env = GeoGuessrEnv(config=test_config_with_fixtures)
     try:
         obs, info = env.reset()
         assert (
@@ -111,9 +126,9 @@ def test_answer_action_terminates_episode(test_config):
         env.close()
 
 
-def test_observation_format_and_types(test_config):
+def test_observation_format_and_types(test_config_with_fixtures):
     """Test observation format and data types"""
-    env = GeoGuessrEnv(config=test_config)
+    env = GeoGuessrEnv(config=test_config_with_fixtures)
     try:
         obs, info = env.reset()
 

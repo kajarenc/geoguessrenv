@@ -537,7 +537,7 @@ class GeoGuessrEnv(gym.Env):
         node = self._pano_graph.get(self.current_pano_id, {})
         pano_heading = node.get("heading", 0.0)
         current_heading_deg = math.degrees(self._heading_rad)
-        # Normalize link directions: metadata may store radians. Convert to degrees.
+        # Normalize link directions: metadata stores radians; pass through as radians.
         normalized_links: List[Dict[str, object]] = []
         for link in self.current_links or []:
             try:
@@ -545,16 +545,12 @@ class GeoGuessrEnv(gym.Env):
             except Exception:
                 raw_dir = 0.0
 
-            # Direction may be provided in degrees (0-360) or radians.
-            # Heuristic: if value is within [0, 2π], treat as radians; otherwise degrees.
-            if 0 <= raw_dir <= 2.0 * math.pi:
-                direction_deg = math.degrees(raw_dir) % 360.0
-            else:
-                direction_deg = raw_dir % 360.0
+            # Direction is provided in radians in metadata; no conversion here.
+            direction_rad = float(raw_dir)
             normalized_links.append(
                 {
                     "id": link.get("id"),
-                    "direction": direction_deg,
+                    "direction": direction_rad,
                 }
             )
 

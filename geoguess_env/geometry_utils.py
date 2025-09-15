@@ -129,14 +129,14 @@ class GeometryUtils:
         Returns:
             List of link dictionaries with added screen position info
         """
-        # Convert to radians
+        # Convert headings to radians; link directions are already in radians
         pano_heading_rad = math.radians(pano_heading)
         current_heading_rad = math.radians(current_heading)
 
         screen_links = []
         for link in links:
-            direction_deg = link.get("direction", 0.0)
-            direction_rad = math.radians(direction_deg)
+            # Expect direction to be in radians from metadata
+            direction_rad = float(link.get("direction", 0.0))
             link_id = link.get("id", "")
 
             # Calculate screen x position

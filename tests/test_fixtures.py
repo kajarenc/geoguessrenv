@@ -6,6 +6,7 @@ for testing the refactored GeoGuessr environment components.
 """
 
 import json
+import math
 import tempfile
 from pathlib import Path
 from typing import Dict, List
@@ -63,9 +64,9 @@ def sample_panorama_metadata():
         elevation=10.0,
         links=[
             {"id": "north_pano", "direction": 0.0},
-            {"id": "east_pano", "direction": 90.0},
-            {"id": "south_pano", "direction": 180.0},
-            {"id": "west_pano", "direction": 270.0},
+            {"id": "east_pano", "direction": math.pi / 2},
+            {"id": "south_pano", "direction": math.pi},
+            {"id": "west_pano", "direction": 3 * math.pi / 2},
         ],
     )
 
@@ -80,22 +81,22 @@ def mock_panorama_graph():
             "heading": 0.0,
             "links": [
                 {"id": "north_pano", "direction": 0.0},
-                {"id": "east_pano", "direction": 90.0},
-                {"id": "south_pano", "direction": 180.0},
-                {"id": "west_pano", "direction": 270.0},
+                {"id": "east_pano", "direction": math.pi / 2},
+                {"id": "south_pano", "direction": math.pi},
+                {"id": "west_pano", "direction": 3 * math.pi / 2},
             ],
         },
         "north_pano": {
             "lat": 47.621908,
             "lon": -122.353508,
             "heading": 180.0,
-            "links": [{"id": "center_pano", "direction": 180.0}],
+            "links": [{"id": "center_pano", "direction": math.pi}],
         },
         "east_pano": {
             "lat": 47.620908,
             "lon": -122.352508,
             "heading": 270.0,
-            "links": [{"id": "center_pano", "direction": 270.0}],
+            "links": [{"id": "center_pano", "direction": 3 * math.pi / 2}],
         },
         "south_pano": {
             "lat": 47.619908,
@@ -107,7 +108,7 @@ def mock_panorama_graph():
             "lat": 47.620908,
             "lon": -122.354508,
             "heading": 90.0,
-            "links": [{"id": "center_pano", "direction": 90.0}],
+            "links": [{"id": "center_pano", "direction": math.pi / 2}],
         },
     }
 
@@ -134,7 +135,7 @@ def mock_provider():
         lat=47.620908,
         lon=-122.353508,
         heading=0.0,
-        links=[{"id": "neighbor_pano", "direction": 90.0}],
+        links=[{"id": "neighbor_pano", "direction": math.pi / 2}],
     )
     provider.download_panorama_image.return_value = True
     provider.get_connected_panoramas.return_value = []

@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 from unittest.mock import patch
 
@@ -56,12 +57,12 @@ def env_with_mock_links(test_config):
                 },  # North - will be at x=0 (or image_width)
                 {
                     "id": "pano_east",
-                    "direction": 90.0,
+                    "direction": math.pi / 2,
                 },  # East - will be at x=256
-                {"id": "pano_south", "direction": 180.0},  # South - will be at x=512
+                {"id": "pano_south", "direction": math.pi},  # South - will be at x=512
                 {
                     "id": "pano_west",
-                    "direction": 270.0,
+                    "direction": 3 * math.pi / 2,
                 },  # West - will be at x=768
             ],
         },
@@ -69,13 +70,13 @@ def env_with_mock_links(test_config):
             "lat": 47.621908,
             "lon": -122.353508,
             "heading": 0.0,
-            "links": [{"id": "test_pano_1", "direction": 180.0}],
+            "links": [{"id": "test_pano_1", "direction": math.pi}],
         },
         "pano_east": {
             "lat": 47.620908,
             "lon": -122.352508,
             "heading": 0.0,
-            "links": [{"id": "test_pano_1", "direction": 270.0}],
+            "links": [{"id": "test_pano_1", "direction": 3 * math.pi / 2}],
         },
         "pano_south": {
             "lat": 47.619908,
@@ -87,7 +88,7 @@ def env_with_mock_links(test_config):
             "lat": 47.620908,
             "lon": -122.354508,
             "heading": 0.0,
-            "links": [{"id": "test_pano_1", "direction": 90.0}],
+            "links": [{"id": "test_pano_1", "direction": math.pi / 2}],
         },
     }
 
@@ -179,7 +180,7 @@ def test_click_within_radius_selects_link():
             "lon": -122.353508,
             "heading": 0.0,
             "links": [
-                {"id": "target_pano", "direction": 90.0}  # East direction
+                {"id": "target_pano", "direction": math.pi / 2}  # East direction
             ],
         },
         "target_pano": {
@@ -241,7 +242,7 @@ def test_click_outside_radius_no_op():
             "lon": -122.353508,
             "heading": 0.0,
             "links": [
-                {"id": "target_pano", "direction": 90.0}  # East direction
+                {"id": "target_pano", "direction": math.pi / 2}  # East direction
             ],
         },
         "target_pano": {
@@ -382,9 +383,9 @@ def test_arrow_click_mapping_with_known_coordinates():
             "heading": 0.0,
             "links": [
                 {"id": "north_pano", "direction": 0.0},  # North: x=0 or 1024, y=256
-                {"id": "east_pano", "direction": 90.0},  # East: x=256, y=256
-                {"id": "south_pano", "direction": 180.0},  # South: x=512, y=256
-                {"id": "west_pano", "direction": 270.0},  # West: x=768, y=256
+                {"id": "east_pano", "direction": math.pi / 2},  # East: x=256, y=256
+                {"id": "south_pano", "direction": math.pi},  # South: x=512, y=256
+                {"id": "west_pano", "direction": 3 * math.pi / 2},  # West: x=768, y=256
             ],
         }
     }

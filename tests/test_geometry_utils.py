@@ -108,9 +108,9 @@ class TestGeometryUtils:
         """Test computation of link screen positions."""
         links = [
             {"id": "north", "direction": 0.0},
-            {"id": "east", "direction": 90.0},
-            {"id": "south", "direction": 180.0},
-            {"id": "west", "direction": 270.0},
+            {"id": "east", "direction": math.pi / 2},
+            {"id": "south", "direction": math.pi},
+            {"id": "west", "direction": 3 * math.pi / 2},
         ]
 
         screen_links = GeometryUtils.compute_link_screen_positions(

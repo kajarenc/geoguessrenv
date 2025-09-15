@@ -29,30 +29,25 @@ class VLMBroker:
         height, width = image.shape[:2]
         yaw_deg = pose.get("yaw_deg", 0.0)
 
-        prompt = f"""You are playing GeoGuessr! You can see a street view panorama image.
+        prompt = f"""You are playing GeoGuessr with a street-view panorama.
 
-Your goal is to determine your location by navigating and then providing your best guess of the coordinates.
+Goal: Navigate by clicking, then answer with your best latitude/longitude guess.
 
-Current Information:
-- Image dimensions: {width}x{height} pixels
-- Current camera heading: {yaw_deg:.1f} degrees
+Context:
+- Image size: {width}x{height} pixels
+- Camera yaw: {yaw_deg:.1f}°
 
-You have TWO possible actions:
+Allowed actions (single JSON schema ONLY):
+- Click to navigate: {{"op":"click","value":[x,y]}}
+- Answer to finish:  {{"op":"answer","value":[lat_deg,lon_deg]}}
 
-1. CLICK to navigate (coordinates are 0-indexed pixels in the image):
-{{"op":"click","value":[x,y]}}
+Constraints:
+- x ∈ [0,{width - 1}], y ∈ [0,{height - 1}] (pixels)
+- lat ∈ [-90,90], lon ∈ [-180,180]
+- Clicks give 0 reward; only the final answer is scored
+- Navigation arrows are latent; click where you infer them
 
-2. ANSWER when you're ready to guess your location:
-{{"op":"answer","value":[lat_deg,lon_deg]}}
-
-Important notes:
-- Click coordinates must be within image bounds: x ∈ [0,{width - 1}], y ∈ [0,{height - 1}]
-- Latitude range: [-90, 90], Longitude range: [-180, 180]
-- Only navigation clicks earn 0 points; only your final answer is scored
-- You can navigate by clicking on navigation arrows/links in the image
-- Navigation arrows are not visually marked - you must find them in the image
-
-Return ONLY ONE JSON object with your chosen action."""
+Return exactly ONE JSON object in the schema above, with no extra text."""
 
         return prompt
 

@@ -50,13 +50,13 @@ def main() -> None:
     total_reward = 0.0
     done = False
     while not done and steps < 11:
-        # On the 3th step, click at screen position (x=940, y=256)
+        # On the 3rd step, click at screen position (x=940, y=256)
         if steps == 2:
-            action = {"op": "click", "click": [940, 256]}
+            action = {"op": "click", "value": [740, 256]}
         elif steps == 10:
-            action = {"op": "answer", "answer": [guess_lat, guess_lon]}
+            action = {"op": "answer", "value": [guess_lat, guess_lon]}
         else:
-            action = {"op": "click", "click": [512, 256]}
+            action = {"op": "click", "value": [512, 256]}
         observation, reward, terminated, truncated, info = env.step(action)
         print(info)
         print("---------")

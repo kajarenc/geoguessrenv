@@ -48,12 +48,13 @@ def main() -> None:
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    cache_root = args.cache_root or os.path.join(project_root, "tempcache")
+    cache_root = args.cache_root or os.path.join(project_root, "cache")
 
     env = gym.make(
         ENV_ID,
         render_mode="human" if args.render else None,
         config={
+            "mode": "online",  # Enable fetching data from providers
             "cache_root": cache_root,
             "input_lat": args.input_lat,
             "input_lon": args.input_lon,

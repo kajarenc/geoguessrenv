@@ -61,7 +61,7 @@ Arguments:
 - `--max_nav_steps`: Maximum navigation steps before answering (default `10`).
 - `--image_width/--image_height`: Image size sent to the model (defaults `1024x512`).
 - `--input_lat/--input_lon`: Seed location for fetching nearby panoramas.
-- `--cache_root`: Where the environment stores images/metadata (defaults to `tempcache`).
+- `--cache_root`: Where the environment stores images/metadata (defaults to `cache`).
 - `--cache_dir`: Optional local cache directory for agent responses.
 - `--render`: Show a Pygame window while running.
 

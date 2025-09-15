@@ -90,7 +90,7 @@ Actions use a dictionary format with operation-specific keys:
 The current demo shows:
 - Environment registration with ID `"GeoGuessrWorld-v0"`
 - Basic click navigation and answer submission
-- Local caching in `tempcache/` directory
+- Local caching in `cache/` directory
 - Integration with street view data providers
 
 ## User Preferences & Code Style

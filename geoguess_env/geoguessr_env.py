@@ -10,92 +10,70 @@ import pygame
 from gymnasium import spaces
 from PIL import Image
 
-from .helpers import (
-    download_images,
-    download_metadata,
-    get_nearest_pano_id,
-)
+from .action_parser import ActionParser
+from .asset_manager import AssetManager
+from .config import GeoGuessrConfig
+from .geometry_utils import GeometryUtils
+from .providers.google_streetview import GoogleStreetViewProvider
 
 
 class GeoGuessrEnv(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 1}
+    """
+    GeoGuessr-style Gymnasium environment for panorama navigation.
+
+    This environment provides a street-level panorama navigation task where
+    agents can click to navigate between connected panoramas and submit
+    coordinate guesses for scoring.
+
+    The environment uses a modular architecture with separate components for
+    configuration management, asset loading, geometry calculations, and
+    action parsing.
+    """
+
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
     def __init__(self, config: Optional[Dict] = None, render_mode=None):
-        # Normalize config
-        cfg = dict(config or {})
-        # Public config (towards spec)
-        self.provider: Optional[str] = cfg.get("provider")
-        self.mode: Optional[str] = cfg.get("mode")  # {online, offline}
-        self.geofence: Optional[Dict] = cfg.get("geofence")
-        self.input_lat: Optional[float] = cfg.get("input_lat")
-        self.input_lon: Optional[float] = cfg.get("input_lon")
-        self.cache_root: Optional[str] = cfg.get("cache_root")
-        self.max_steps: int = int(cfg.get("max_steps", 40))
-        self._initial_seed: Optional[int] = cfg.get("seed")
-        self.rate_limit_qps: Optional[float] = cfg.get("rate_limit_qps")
-        self.max_fetch_retries: Optional[int] = cfg.get("max_fetch_retries")
-        self.min_capture_year: Optional[int] = cfg.get("min_capture_year")
+        """
+        Initialize the GeoGuessr environment.
 
-        # Rendering config
-        self.render_mode = render_mode
+        Args:
+            config: Environment configuration dictionary
+            render_mode: Rendering mode ('human', 'rgb_array', or None)
+        """
+        # Parse and validate configuration
+        self.config = GeoGuessrConfig.from_dict(config)
 
-        # Controls (click mapping)
-        self.arrow_hit_radius_px: int = int(cfg.get("arrow_hit_radius_px", 24))
-        self.arrow_min_conf: float = float(cfg.get("arrow_min_conf", 0.0))
+        # Override render mode if specified
+        if render_mode is not None:
+            self.config.render_config.render_mode = render_mode
 
-        # Root pano selection (MVP: fixed root pano and pre-downloaded assets)
+        # Set up provider and asset manager
+        self.provider = GoogleStreetViewProvider(
+            rate_limit_qps=self.config.provider_config.rate_limit_qps,
+            max_retries=self.config.provider_config.max_fetch_retries,
+            min_capture_year=self.config.provider_config.min_capture_year,
+        )
+
+        self.asset_manager = AssetManager(
+            provider=self.provider,
+            cache_root=self.config.cache_root,
+            max_connected_panoramas=self.config.nav_config.max_connected_panoramas,
+        )
+
+        # Set up action parser
+        self.action_parser = ActionParser(
+            image_width=self.config.render_config.image_width,
+            image_height=self.config.render_config.image_height,
+        )
+
+        # Initialize environment state
         self.pano_root_id: Optional[str] = None
-
-        # Resolve project paths using cache_root when provided
-        # images -> <cache_root>/images; metadata -> <cache_root>/metadata
-        env_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(env_dir)
-        cache_root = self.cache_root or os.path.join(project_root, "cache")
-        self.images_dir = os.path.join(cache_root, "images")
-        self.metadata_dir = os.path.join(cache_root, "metadata")
-
-        # Defer loading metadata and reading image sizes to reset() after downloads
         self._pano_graph: Dict[str, Dict] = {}
-        # Provide sensible defaults for dimensions until reset() initializes them
-        self._image_width = 1024
-        self._image_height = 512
+        self._image_width = self.config.render_config.image_width
+        self._image_height = self.config.render_config.image_height
 
-        # Observation is a dictionary with an "image" key per spec
-        self.observation_space = spaces.Dict(
-            {
-                "image": spaces.Box(
-                    low=0,
-                    high=255,
-                    shape=(self._image_height, self._image_width, 3),
-                    dtype=np.uint8,
-                )
-            }
-        )
-        # Action space
-        # Two actions:
-        # - op == 0: click → value in pixels (x, y) with explicit bounds [0,1024] x [0,512]
-        # - op == 1: answer → value is (lat, lon) with standard bounds [-90,90] x [-180,180]
-        self._click_low = np.array([0, 0], dtype=np.int32)
-        self._click_high = np.array([1024, 512], dtype=np.int32)
-        click_space = spaces.Box(
-            low=self._click_low,
-            high=self._click_high,
-            shape=(2,),
-            dtype=np.int32,
-        )
-        answer_space = spaces.Box(
-            low=np.array([-90.0, -180.0], dtype=np.float32),
-            high=np.array([90.0, 180.0], dtype=np.float32),
-            shape=(2,),
-            dtype=np.float32,
-        )
-        self.action_space = spaces.Dict(
-            {
-                "op": spaces.Discrete(2),
-                "click": click_space,
-                "answer": answer_space,
-            }
-        )
+        # Set up observation and action spaces
+        self._setup_spaces()
 
         # Runtime state
         self.current_pano_id: Optional[str] = None
@@ -111,10 +89,53 @@ class GeoGuessrEnv(gym.Env):
         self._clock = None
         self._font = None
 
+    def _setup_spaces(self):
+        """
+        Set up observation and action spaces based on configuration.
+        """
+        # Observation space: dictionary with image
+        self.observation_space = spaces.Dict(
+            {
+                "image": spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(self._image_height, self._image_width, 3),
+                    dtype=np.uint8,
+                )
+            }
+        )
+
+        # Action space: click and answer operations
+        click_space = spaces.Box(
+            low=np.array([0, 0], dtype=np.int32),
+            high=np.array([self._image_width, self._image_height], dtype=np.int32),
+            shape=(2,),
+            dtype=np.int32,
+        )
+        # Store click bounds for action validation
+        self._click_low = [0, 0]
+        self._click_high = [self._image_width, self._image_height]
+        answer_space = spaces.Box(
+            low=np.array([-90.0, -180.0], dtype=np.float32),
+            high=np.array([90.0, 180.0], dtype=np.float32),
+            shape=(2,),
+            dtype=np.float32,
+        )
+        self.action_space = spaces.Dict(
+            {
+                "op": spaces.Discrete(2),
+                "click": click_space,
+                "answer": answer_space,
+            }
+        )
+
     def _get_info(self):
+        """
+        Get environment info dictionary.
+        """
         links_with_screen = self._compute_link_screens()
         return {
-            "provider": self.provider,
+            "provider": self.provider.provider_name,
             "pano_id": self.current_pano_id,
             "gt_lat": self.current_lat,
             "gt_lon": self.current_lon,
@@ -128,111 +149,148 @@ class GeoGuessrEnv(gym.Env):
         }
 
     def reset(self, seed=None, options=None):
-        # We need the following line to seed self.np_random
-        if seed is None and self._initial_seed is not None:
-            seed = int(self._initial_seed)
+        """
+        Reset the environment to start a new episode.
+
+        Args:
+            seed: Random seed for episode generation
+            options: Additional reset options (unused)
+
+        Returns:
+            Tuple of (observation, info)
+        """
+        # Initialize random number generator
+        if seed is None and self.config.seed is not None:
+            seed = self.config.seed
         super().reset(seed=seed)
 
-        # Sample coordinates from geofence if provided, otherwise use input coordinates
-        if self.geofence and self.mode == "online":
+        # Determine starting coordinates
+        if self.config.geofence and self.config.mode == "online":
             lat, lon = self._sample_from_geofence(seed)
         else:
-            lat, lon = self.input_lat, self.input_lon
+            lat, lon = self.config.input_lat, self.config.input_lon
 
-        # TODO[Karen]: improve pano fetching logic, don't fetch optimistically
-        # TODO[Karen]: skip if malformed image appears
-        pano_id = get_nearest_pano_id(lat, lon, self.metadata_dir)
-        if pano_id is not None:
-            self.pano_root_id = pano_id
-        else:
-            raise ValueError(f"No pano found for coordinates: {lat}, {lon}")
-        # Ensure directories exist
-        os.makedirs(self.metadata_dir, exist_ok=True)
-        os.makedirs(self.images_dir, exist_ok=True)
-        # Best-effort download; tolerate failures in CI/mocked runs
+        if lat is None or lon is None:
+            raise ValueError(
+                "No starting coordinates provided (either input_lat/lon or geofence required)"
+            )
+
+        # Get or fetch panorama graph using asset manager
+        offline_mode = self.config.mode == "offline"
         try:
-            download_metadata(self.pano_root_id, self.metadata_dir)
-        except Exception:
-            pass
-        try:
-            download_images(self.pano_root_id, self.metadata_dir, self.images_dir)
-        except Exception:
-            pass
+            self._pano_graph = self.asset_manager.get_or_fetch_panorama_graph(
+                root_lat=lat, root_lon=lon, offline_mode=offline_mode
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to load panorama data for {lat}, {lon}: {e}")
 
-        # Now that metadata is available, load the graph
-        metadata_path = os.path.join(
-            self.metadata_dir, f"{self.pano_root_id}_mini.jsonl"
-        )
-        self._pano_graph = self._load_minimetadata(metadata_path)
+        if not self._pano_graph:
+            raise ValueError(
+                f"No panorama graph available for coordinates {lat}, {lon}"
+            )
 
+        # Find root panorama ID (first key in graph)
+        self.pano_root_id = next(iter(self._pano_graph.keys()))
+
+        # Preload images for all panoramas in the graph to ensure smooth navigation
+        if not offline_mode:
+            print(f"Prefetching images for {len(self._pano_graph)} panoramas...")
+            pano_ids = set(self._pano_graph.keys())
+            preload_results = self.asset_manager.preload_assets(
+                pano_ids, skip_existing=True
+            )
+            successful_loads = sum(1 for success in preload_results.values() if success)
+            print(
+                f"Successfully prefetched {successful_loads}/{len(pano_ids)} panorama images"
+            )
+
+        # Reset episode state
         self._steps = 0
-        # Initialize to fixed root pano
         self._set_current_pano(self.pano_root_id)
-        # Initialize camera heading to the current pano heading if available
-        node = self._pano_graph.get(self.current_pano_id, {})
-        heading = node.get("heading")
-        if isinstance(heading, (int, float)):
-            self._heading_rad = float(heading)
-        else:
-            self._heading_rad = 0.0
 
+        # Initialize camera heading
+        node = self._pano_graph.get(self.current_pano_id, {})
+        heading = node.get("heading", 0.0)
+        self._heading_rad = (
+            math.radians(heading) if isinstance(heading, (int, float)) else 0.0
+        )
+
+        # Get initial observation and info
         obs = self._get_observation()
         info = self._get_info()
         return obs, info
 
-    # --- Step with click and answer actions ---
     def step(self, action):
+        """
+        Execute one environment step.
+
+        Args:
+            action: Action to execute (click or answer)
+
+        Returns:
+            Tuple of (observation, reward, terminated, truncated, info)
+        """
         self._steps += 1
 
-        op, value = self._parse_action(action)
+        # Parse action using robust action parser
+        try:
+            op, values = self.action_parser.parse_action(action)
+        except Exception as e:
+            print(f"Action parsing failed: {e}, using fallback")
+            op, values = self.action_parser.parse_with_fallback(action)
 
         terminated = False
         truncated = False
         reward = 0.0
 
         if op == 0:
-            # click: value is (x, y) pixels
-            x, y = value
+            # Click action: navigate to link
+            x, y = values
             print(f"CLICK: x: {x}, y: {y}")
             self._handle_click(x, y)
         elif op == 1:
-            # answer: value is (lat, lon)
-            guess_lat, guess_lon = value
-            reward = self._compute_answer_reward(guess_lat, guess_lon)
-            print(f"ANSWER: {guess_lat}, {guess_lon}")
+            # Answer action: submit coordinate guess
+            guess_lat, guess_lon = values
+            reward = GeometryUtils.compute_answer_reward(
+                guess_lat, guess_lon, self.current_lat or 0.0, self.current_lon or 0.0
+            )
+            print(f"ANSWER: {guess_lat}, {guess_lon} (reward: {reward:.4f})")
             terminated = True
 
-        # Truncation if exceeding max_steps (unless already terminated)
-        if (
-            not terminated
-            and self.max_steps is not None
-            and self._steps >= int(self.max_steps)
-        ):
+        # Check for truncation due to max steps
+        if not terminated and self._steps >= self.config.max_steps:
             truncated = True
 
+        # Get observation and info
         obs = self._get_observation()
         info = self._get_info()
+
+        # Add answer-specific info
         if op == 1:
-            info["guess_lat"] = float(value[0])
-            info["guess_lon"] = float(value[1])
+            info["guess_lat"] = float(values[0])
+            info["guess_lon"] = float(values[1])
+
             if self.current_lat is not None and self.current_lon is not None:
-                distance_km = self._haversine_km(
-                    float(self.current_lat),
-                    float(self.current_lon),
-                    float(value[0]),
-                    float(value[1]),
+                distance_km = GeometryUtils.haversine_distance(
+                    self.current_lat,
+                    self.current_lon,
+                    float(values[0]),
+                    float(values[1]),
                 )
                 info["distance_km"] = distance_km
             else:
-                info["distance_km"] = float("inf")  # Unknown distance if no position
+                info["distance_km"] = float("inf")
+
             info["score"] = reward
-            info["steps"] = self._steps
+
         return obs, reward, terminated, truncated, info
 
     # --- Rendering ---
     def render(self, mode=None):
         # Allow override via argument; fall back to configured render_mode
-        render_mode = mode if mode is not None else self.render_mode
+        render_mode = (
+            mode if mode is not None else self.config.render_config.render_mode
+        )
         if render_mode == "rgb_array":
             return self._get_observation()["image"]
         if render_mode == "human":
@@ -261,7 +319,7 @@ class GeoGuessrEnv(gym.Env):
 
             # Overlay link centers and pano ids for human debugging only
             links = self._compute_link_screens()
-            radius = int(self.arrow_hit_radius_px)
+            radius = int(self.config.nav_config.arrow_hit_radius_px)
             for link in links:
                 cx, cy = link["screen_xy"]
                 # Draw filled red circle
@@ -310,7 +368,7 @@ class GeoGuessrEnv(gym.Env):
     # --- Geofence sampling helpers ---
     def _sample_from_geofence(self, seed: Optional[int] = None) -> Tuple[float, float]:
         """
-        Sample coordinates from the configured geofence using seeded RNG.
+        Sample coordinates from the configured geofence using GeometryUtils.
 
         Args:
             seed: Random seed for deterministic sampling
@@ -318,61 +376,26 @@ class GeoGuessrEnv(gym.Env):
         Returns:
             Tuple of (latitude, longitude) within the geofence
         """
-        if not self.geofence:
+        if not self.config.geofence:
             raise ValueError("No geofence configured for sampling")
 
         # Use a separate random instance for geofence sampling to ensure determinism
         rng = random.Random(seed)
 
-        geofence_type = self.geofence.get("type")
-        if geofence_type == "circle":
-            return self._sample_from_circular_geofence(self.geofence, rng)
-        else:
-            raise ValueError(f"Unsupported geofence type: {geofence_type}")
-
-    def _sample_from_circular_geofence(
-        self, geofence: Dict, rng: random.Random
-    ) -> Tuple[float, float]:
-        """
-        Sample coordinates from a circular geofence.
-
-        Args:
-            geofence: Circular geofence configuration
-            rng: Random number generator instance
-
-        Returns:
-            Tuple of (latitude, longitude) within the circle
-        """
-        center = geofence.get("center", {})
-        center_lat = center.get("lat")
-        center_lon = center.get("lon")
-        radius_km = geofence.get("radius_km")
-
-        if None in (center_lat, center_lon, radius_km):
-            raise ValueError(
-                "Invalid circular geofence: missing center lat/lon or radius_km"
+        geofence = self.config.geofence
+        if geofence.type == "circle":
+            return GeometryUtils.sample_circular_geofence(
+                center_lat=geofence.center["lat"],
+                center_lon=geofence.center["lon"],
+                radius_km=geofence.radius_km,
+                rng=rng,
             )
-
-        # Sample a point uniformly within the circle
-        # Use sqrt to get uniform distribution by area
-        r = radius_km * math.sqrt(rng.random())
-        theta = 2 * math.pi * rng.random()
-
-        # Convert to lat/lon offset
-        # Approximate conversion: 1 degree lat ≈ 111 km, 1 degree lon ≈ 111 km * cos(lat)
-        lat_offset = (r * math.cos(theta)) / 111.0
-        lon_offset = (r * math.sin(theta)) / (
-            111.0 * math.cos(math.radians(center_lat))
-        )
-
-        sample_lat = center_lat + lat_offset
-        sample_lon = center_lon + lon_offset
-
-        # Clamp to valid ranges
-        sample_lat = max(-90.0, min(90.0, sample_lat))
-        sample_lon = max(-180.0, min(180.0, sample_lon))
-
-        return sample_lat, sample_lon
+        elif geofence.type == "polygon":
+            return GeometryUtils.sample_polygon_geofence(
+                polygon=[(p[0], p[1]) for p in geofence.polygon], rng=rng
+            )
+        else:
+            raise ValueError(f"Unsupported geofence type: {geofence.type}")
 
     # --- Helpers ---
     def _load_minimetadata(self, jsonl_path: str) -> Dict[str, Dict]:
@@ -433,85 +456,76 @@ class GeoGuessrEnv(gym.Env):
         self._current_image = None  # force reload on next observation
 
     def _get_observation(self) -> Dict[str, np.ndarray]:
+        """
+        Get current observation (panorama image).
+        """
         if self._current_image is None:
-            image_path = os.path.join(self.images_dir, f"{self.current_pano_id}.jpg")
-            with Image.open(image_path) as img:
-                img = img.convert("RGB")
-                np_img = np.array(img, dtype=np.uint8)
-            self._current_image = np_img
+            # Try to get image from asset manager first
+            asset = self.asset_manager.get_panorama_asset(self.current_pano_id)
+            if asset and asset.image_path.exists():
+                with Image.open(asset.image_path) as img:
+                    img = img.convert("RGB")
+                    self._current_image = np.array(img, dtype=np.uint8)
+            else:
+                # Fallback to direct file access for backward compatibility
+                image_path = self.config.images_dir / f"{self.current_pano_id}.jpg"
+                if image_path.exists():
+                    with Image.open(image_path) as img:
+                        img = img.convert("RGB")
+                        self._current_image = np.array(img, dtype=np.uint8)
+                else:
+                    # Create a placeholder image if none found
+                    self._current_image = np.zeros(
+                        (self._image_height, self._image_width, 3), dtype=np.uint8
+                    )
+
         return {"image": self._current_image}
 
     # --- Click handling and link mapping ---
     def _compute_link_screens(self) -> List[Dict[str, object]]:
         """
-        Compute screen-space centers for current links. We project directions (radians)
-        into equirectangular x positions, with y at image vertical center.
+        Compute screen-space centers for current links using GeometryUtils.
         """
         node = self._pano_graph.get(self.current_pano_id, {})
-        pano_heading = node.get("heading")
-        if not isinstance(pano_heading, (int, float)):
-            pano_heading = 0.0
-        links: List[Dict[str, object]] = []
-        for link in self.current_links:
-            direction = float(link.get("direction", 0.0))
-            link_id = str(link.get("id"))
-            x = self._direction_to_x(direction, float(pano_heading), self._image_width)
-            y = self._image_height // 2
-            # rel heading in degrees for tie-breakers: how far from current heading
-            abs_heading = self._normalize_angle(direction + pano_heading)
-            rel = self._angle_diff_rad(abs_heading, self._heading_rad)
-            links.append(
-                {
-                    "id": link_id,
-                    "heading_deg": float((math.degrees(abs_heading) % 360.0)),
-                    "screen_xy": [int(x), int(y)],
-                    "conf": 1.0,
-                    "_distance_px": None,  # filled during hit-test
-                    "_rel_heading_deg": float(abs(math.degrees(rel))),
-                }
-            )
-        return links
+        pano_heading = node.get("heading", 0.0)
+        current_heading_deg = math.degrees(self._heading_rad)
+
+        return GeometryUtils.compute_link_screen_positions(
+            links=self.current_links,
+            pano_heading=pano_heading,
+            current_heading=current_heading_deg,
+            image_width=self._image_width,
+            image_height=self._image_height,
+        )
 
     def _handle_click(self, x: float, y: float) -> None:
-        # Clamp click to image bounds and round to int
-        xi = int(round(float(x)))
-        yi = int(round(float(y)))
-        xi = max(0, min(self._image_width - 1, xi))
-        yi = max(0, min(self._image_height - 1, yi))
-
-        links = self._compute_link_screens()
-        if not links:
+        """
+        Handle click action and navigate to appropriate link if found.
+        """
+        # Get screen links
+        screen_links = self._compute_link_screens()
+        if not screen_links:
             return
-        # Compute distances
-        for link in links:
-            cx, cy = link["screen_xy"]
-            dx = xi - int(cx)
-            dy = yi - int(cy)
-            link["_distance_px"] = math.hypot(dx, dy)
 
-        # Filter by radius and confidence
-        candidates = [
-            link
-            for link in links
-            if (
-                link["_distance_px"] is not None
-                and link["_distance_px"] <= float(self.arrow_hit_radius_px)
-                and float(link["conf"]) >= float(self.arrow_min_conf)
-            )
-        ]
-        if not candidates:
-            return  # no-op
-
-        # Sort by distance, then smallest abs rel heading, then lexicographic pano id
-        candidates.sort(
-            key=lambda link: (
-                float(link["_distance_px"]),
-                float(link["_rel_heading_deg"]),
-                str(link["id"]),
-            )
+        # Find clicked link using GeometryUtils
+        clicked_link = GeometryUtils.find_clicked_link(
+            click_x=int(round(x)),
+            click_y=int(round(y)),
+            screen_links=screen_links,
+            hit_radius=self.config.nav_config.arrow_hit_radius_px,
+            min_confidence=self.config.nav_config.arrow_min_conf,
         )
-        chosen = candidates[0]
-        next_id = str(chosen["id"])
+
+        if clicked_link is None:
+            return  # No valid link clicked
+
+        # Navigate to the selected link
+        next_id = clicked_link["id"]
+
+        # Check if the target pano exists in the graph before navigating
+        if next_id not in self._pano_graph:
+            # Skip navigation if target pano is not loaded in the graph
+            return
 
         # Move to neighbor pano
         self._set_current_pano(next_id)

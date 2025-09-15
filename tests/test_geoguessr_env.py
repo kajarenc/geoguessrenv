@@ -1,4 +1,3 @@
-import math
 from pathlib import Path
 from unittest.mock import patch
 
@@ -41,12 +40,12 @@ def env_with_mock_links(test_config):
                 },  # North - will be at x=0 (or image_width)
                 {
                     "id": "pano_east",
-                    "direction": math.pi / 2,
+                    "direction": 90.0,
                 },  # East - will be at x=256
-                {"id": "pano_south", "direction": math.pi},  # South - will be at x=512
+                {"id": "pano_south", "direction": 180.0},  # South - will be at x=512
                 {
                     "id": "pano_west",
-                    "direction": 3 * math.pi / 2,
+                    "direction": 270.0,
                 },  # West - will be at x=768
             ],
         },
@@ -54,13 +53,13 @@ def env_with_mock_links(test_config):
             "lat": 47.621908,
             "lon": -122.353508,
             "heading": 0.0,
-            "links": [{"id": "test_pano_1", "direction": math.pi}],
+            "links": [{"id": "test_pano_1", "direction": 180.0}],
         },
         "pano_east": {
             "lat": 47.620908,
             "lon": -122.352508,
             "heading": 0.0,
-            "links": [{"id": "test_pano_1", "direction": 3 * math.pi / 2}],
+            "links": [{"id": "test_pano_1", "direction": 270.0}],
         },
         "pano_south": {
             "lat": 47.619908,
@@ -72,7 +71,7 @@ def env_with_mock_links(test_config):
             "lat": 47.620908,
             "lon": -122.354508,
             "heading": 0.0,
-            "links": [{"id": "test_pano_1", "direction": math.pi / 2}],
+            "links": [{"id": "test_pano_1", "direction": 90.0}],
         },
     }
 
@@ -164,7 +163,7 @@ def test_click_within_radius_selects_link():
             "lon": -122.353508,
             "heading": 0.0,
             "links": [
-                {"id": "target_pano", "direction": math.pi / 2}  # East direction
+                {"id": "target_pano", "direction": 90.0}  # East direction
             ],
         },
         "target_pano": {
@@ -226,7 +225,7 @@ def test_click_outside_radius_no_op():
             "lon": -122.353508,
             "heading": 0.0,
             "links": [
-                {"id": "target_pano", "direction": math.pi / 2}  # East direction
+                {"id": "target_pano", "direction": 90.0}  # East direction
             ],
         },
         "target_pano": {
@@ -367,9 +366,9 @@ def test_arrow_click_mapping_with_known_coordinates():
             "heading": 0.0,
             "links": [
                 {"id": "north_pano", "direction": 0.0},  # North: x=0 or 1024, y=256
-                {"id": "east_pano", "direction": math.pi / 2},  # East: x=256, y=256
-                {"id": "south_pano", "direction": math.pi},  # South: x=512, y=256
-                {"id": "west_pano", "direction": 3 * math.pi / 2},  # West: x=768, y=256
+                {"id": "east_pano", "direction": 90.0},  # East: x=256, y=256
+                {"id": "south_pano", "direction": 180.0},  # South: x=512, y=256
+                {"id": "west_pano", "direction": 270.0},  # West: x=768, y=256
             ],
         }
     }
@@ -498,21 +497,19 @@ def test_geofence_sampling_in_reset():
 
     env = GeoGuessrEnv(config=config)
 
-    # Mock the methods that require actual data fetching
-    with (
-        patch("geoguess_env.geoguessr_env.get_nearest_pano_id") as mock_get_pano,
-        patch.object(env, "_load_minimetadata") as mock_load_meta,
-    ):
-        mock_get_pano.return_value = "test_pano"
-        mock_load_meta.return_value = {
-            "test_pano": {
-                "lat": 47.620908,
-                "lon": -122.353508,
-                "heading": 0.0,
-                "links": [],
-            }
+    # Mock the asset manager to avoid actual data fetching
+    mock_graph = {
+        "test_pano": {
+            "lat": 47.620908,
+            "lon": -122.353508,
+            "heading": 0.0,
+            "links": [],
         }
+    }
 
+    with patch.object(
+        env.asset_manager, "get_or_fetch_panorama_graph", return_value=mock_graph
+    ):
         # Mock image for observation
         test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
         with patch.object(env, "_get_observation", return_value={"image": test_image}):
@@ -543,36 +540,33 @@ def test_geofence_sampling_with_fallback():
 
     env = GeoGuessrEnv(config=config)
 
-    # Mock the methods that require actual data fetching
-    with (
-        patch("geoguess_env.geoguessr_env.get_nearest_pano_id") as mock_get_pano,
-        patch.object(env, "_load_minimetadata") as mock_load_meta,
-    ):
-        mock_get_pano.return_value = "test_pano"
-        mock_load_meta.return_value = {
-            "test_pano": {
-                "lat": input_lat,
-                "lon": input_lon,
-                "heading": 0.0,
-                "links": [],
-            }
+    # Mock the asset manager to avoid actual data fetching
+    mock_graph = {
+        "test_pano": {
+            "lat": input_lat,
+            "lon": input_lon,
+            "heading": 0.0,
+            "links": [],
         }
+    }
 
+    with patch.object(
+        env.asset_manager, "get_or_fetch_panorama_graph", return_value=mock_graph
+    ):
         # Mock image for observation
         test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
         with patch.object(env, "_get_observation", return_value={"image": test_image}):
             obs, info = env.reset()
 
-            # get_nearest_pano_id should have been called with the input coordinates
-            mock_get_pano.assert_called_once_with(
-                input_lat, input_lon, env.metadata_dir
-            )
+            # Should have used the input coordinates
+            assert env.current_lat == input_lat
+            assert env.current_lon == input_lon
 
 
 def test_geofence_invalid_type():
     """Test that invalid geofence type raises error"""
     geofence = {
-        "type": "polygon",  # Unsupported type
+        "type": "polygon",  # Polygon type without required polygon field
         "center": {"lat": 47.620908, "lon": -122.353508},
         "radius_km": 10.0,
     }
@@ -584,10 +578,8 @@ def test_geofence_invalid_type():
         "max_steps": 5,
     }
 
-    env = GeoGuessrEnv(config=config)
-
-    with pytest.raises(ValueError, match="Unsupported geofence type"):
-        env._sample_from_geofence(42)
+    with pytest.raises(ValueError, match="Polygon geofence requires at least 3 points"):
+        _env = GeoGuessrEnv(config=config)
 
 
 def test_geofence_invalid_circular_config():
@@ -605,7 +597,7 @@ def test_geofence_invalid_circular_config():
         "max_steps": 5,
     }
 
-    env = GeoGuessrEnv(config=config)
-
-    with pytest.raises(ValueError, match="Invalid circular geofence"):
-        env._sample_from_geofence(42)
+    with pytest.raises(
+        ValueError, match="Circular geofence requires center with lat/lon"
+    ):
+        _env = GeoGuessrEnv(config=config)

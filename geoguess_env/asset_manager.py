@@ -206,9 +206,13 @@ class AssetManager:
         self, lat: float, lon: float, offline_mode: bool
     ) -> Optional[str]:
         """Get panorama ID from cache or find nearest."""
+        # Round coordinates to 6 decimal places for consistent cache handling
+        rounded_lat = round(lat, 6)
+        rounded_lon = round(lon, 6)
+
         # Check cache first
         cache_file = self.metadata_dir / "nearest_pano_cache.json"
-        cache_key = f"{round(lat, 6)},{round(lon, 6)}"
+        cache_key = f"{rounded_lat},{rounded_lon}"
 
         if cache_file.exists():
             try:
@@ -222,8 +226,8 @@ class AssetManager:
         if offline_mode:
             return None
 
-        # Fetch from provider
-        pano_id = self.provider.find_nearest_panorama(lat, lon)
+        # Fetch from provider using rounded coordinates for consistency
+        pano_id = self.provider.find_nearest_panorama(rounded_lat, rounded_lon)
 
         # Update cache
         if pano_id:
@@ -312,6 +316,7 @@ class AssetManager:
 
         while queue and processed_count < self.max_connected_panoramas:
             pano_id = queue.pop(0)
+            print(f"FETCHING PANORAMA: {pano_id}")
 
             if pano_id in visited:
                 continue

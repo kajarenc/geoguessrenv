@@ -175,7 +175,14 @@ class GeoGuessrConfig:
         # Handle geofence
         geofence = None
         if "geofence" in config_dict and config_dict["geofence"]:
-            geofence = GeofenceConfig(**config_dict["geofence"])
+            # Filter geofence parameters to only include known fields
+            geofence_data = config_dict["geofence"]
+            geofence_params = {
+                key: value
+                for key, value in geofence_data.items()
+                if key in {"type", "center", "radius_km", "polygon"}
+            }
+            geofence = GeofenceConfig(**geofence_params)
 
         # Create main config
         main_config = {

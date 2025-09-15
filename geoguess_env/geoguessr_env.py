@@ -164,9 +164,9 @@ class GeoGuessrEnv(gym.Env):
             seed = self.config.seed
         super().reset(seed=seed)
 
-        # Determine starting coordinates
+        # Determine starting coordinates with retry logic for geofence sampling
         if self.config.geofence and self.config.mode == "online":
-            lat, lon = self._sample_from_geofence(seed)
+            lat, lon = self._sample_valid_coordinates_from_geofence(seed)
         else:
             lat, lon = self.config.input_lat, self.config.input_lon
 
@@ -176,6 +176,9 @@ class GeoGuessrEnv(gym.Env):
             )
 
         # Get or fetch panorama graph using asset manager
+        # Round coordinates to 6 decimal places for consistent cache handling
+        lat = round(lat, 6)
+        lon = round(lon, 6)
         offline_mode = self.config.mode == "offline"
         try:
             self._pano_graph = self.asset_manager.get_or_fetch_panorama_graph(
@@ -396,6 +399,51 @@ class GeoGuessrEnv(gym.Env):
             )
         else:
             raise ValueError(f"Unsupported geofence type: {geofence.type}")
+
+    def _sample_valid_coordinates_from_geofence(
+        self, seed: Optional[int] = None
+    ) -> Tuple[float, float]:
+        """
+        Sample coordinates from geofence with retry logic to find locations with panoramas.
+
+        Args:
+            seed: Random seed for deterministic sampling
+
+        Returns:
+            Tuple of (latitude, longitude) where a panorama exists
+
+        Raises:
+            ValueError: If no valid coordinates found after max attempts
+        """
+        max_attempts = 10
+
+        for attempt in range(max_attempts):
+            # Use the attempt number to vary the seed for each retry
+            attempt_seed = (seed + attempt) if seed is not None else attempt
+            lat, lon = self._sample_from_geofence(attempt_seed)
+
+            # Round coordinates to check if panorama exists
+            rounded_lat = round(lat, 6)
+            rounded_lon = round(lon, 6)
+
+            # Check if we can find a panorama at this location
+            try:
+                pano_id = self.asset_manager._get_or_find_nearest_panorama(
+                    rounded_lat, rounded_lon, offline_mode=False
+                )
+                if pano_id:
+                    print(
+                        f"Found valid coordinates after {attempt + 1} attempts: {rounded_lat}, {rounded_lon}"
+                    )
+                    return rounded_lat, rounded_lon
+            except Exception as e:
+                print(
+                    f"Attempt {attempt + 1}: No panorama at {rounded_lat}, {rounded_lon}: {e}"
+                )
+
+        raise ValueError(
+            f"Could not find valid coordinates with panoramas after {max_attempts} attempts"
+        )
 
     # --- Helpers ---
     def _load_minimetadata(self, jsonl_path: str) -> Dict[str, Dict]:

@@ -50,19 +50,17 @@ class TestActionParser:
         assert op == 1
         assert values == (47.6062, -122.3321)
 
-    def test_parse_click_with_explicit_key(self, parser):
-        """Test parsing click action with explicit 'click' key."""
-        action = {"op": "click", "click": [300, 150]}
+    def test_parse_click_requires_value_key(self, parser):
+        """Click must be provided via single 'value' key."""
+        action = {"op": "click", "value": [300, 150]}
         op, values = parser.parse_action(action)
-
         assert op == 0
         assert values == (300.0, 150.0)
 
-    def test_parse_answer_with_explicit_key(self, parser):
-        """Test parsing answer action with explicit 'answer' key."""
-        action = {"op": "answer", "answer": [51.5074, -0.1278]}
+    def test_parse_answer_requires_value_key(self, parser):
+        """Answer must be provided via single 'value' key."""
+        action = {"op": "answer", "value": [51.5074, -0.1278]}
         op, values = parser.parse_action(action)
-
         assert op == 1
         assert values == (51.5074, -0.1278)
 
@@ -159,19 +157,15 @@ class TestActionParser:
             parser.parse_action(action)
 
     def test_missing_click_values(self, parser):
-        """Test error when click values are missing."""
+        """Test error when click values are missing (no 'value')."""
         action = {"op": "click"}
-        with pytest.raises(
-            ActionParsingError, match="Click action missing coordinate values"
-        ):
+        with pytest.raises(ActionParsingError, match="Action missing 'value' field"):
             parser.parse_action(action)
 
     def test_missing_answer_values(self, parser):
-        """Test error when answer values are missing."""
+        """Test error when answer values are missing (no 'value')."""
         action = {"op": "answer"}
-        with pytest.raises(
-            ActionParsingError, match="Answer action missing coordinate values"
-        ):
+        with pytest.raises(ActionParsingError, match="Action missing 'value' field"):
             parser.parse_action(action)
 
     def test_invalid_click_values_format(self, parser):
@@ -250,51 +244,35 @@ class TestActionParser:
     def test_create_click_action(self, parser):
         """Test creating properly formatted click action."""
         action = parser.create_click_action(100, 200)
-
         assert action["op"] == "click"
-        assert action["click"] == [100, 200]
         assert action["value"] == [100, 200]
+        assert set(action.keys()) == {"op", "value"}
 
     def test_create_click_action_with_clamping(self, parser):
         """Test creating click action with coordinate clamping."""
         action = parser.create_click_action(2000, 1000)
-
-        assert action["click"] == [1023, 511]  # Clamped values
+        assert action["value"] == [1023, 511]  # Clamped values
 
     def test_create_answer_action(self, parser):
         """Test creating properly formatted answer action."""
         action = parser.create_answer_action(40.7128, -74.0060)
-
         assert action["op"] == "answer"
-        assert action["answer"] == [40.7128, -74.0060]
         assert action["value"] == [40.7128, -74.0060]
+        assert set(action.keys()) == {"op", "value"}
 
     def test_create_answer_action_with_clamping(self, parser):
         """Test creating answer action with coordinate clamping."""
         action = parser.create_answer_action(95.0, 185.0)
-
-        assert action["answer"] == [90.0, 180.0]  # Clamped values
+        assert action["value"] == [90.0, 180.0]  # Clamped values
 
     def test_get_center_click(self, parser):
         """Test getting center click action."""
         action = parser.get_center_click()
-
         assert action["op"] == "click"
-        assert action["click"] == [512, 256]  # Center of 1024x512 image
+        assert action["value"] == [512, 256]  # Center of 1024x512 image
 
-    def test_numeric_operation_codes(self, parser):
-        """Test parsing with numeric operation codes."""
-        # Click with op=0
-        action = {"op": 0, "value": [100, 200]}
-        op, values = parser.parse_action(action)
-        assert op == 0
-
-        # Answer with op=1
-        action = {"op": 1, "value": [40.7128, -74.0060]}
-        op, values = parser.parse_action(action)
-        assert op == 1
-
-        # Invalid numeric operation
-        action = {"op": 2, "value": [100, 200]}
-        with pytest.raises(ActionParsingError, match="Operation must be 0 or 1"):
+    def test_invalid_operation_type(self, parser):
+        """Operation must be a valid string token."""
+        action = {"op": "invalid", "value": [100, 200]}
+        with pytest.raises(ActionParsingError, match="Invalid operation"):
             parser.parse_action(action)

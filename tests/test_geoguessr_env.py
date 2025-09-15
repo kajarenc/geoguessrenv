@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from geoguess_env.geoguessr_env import GeoGuessrEnv
+from geoguess_env.geometry_utils import GeometryUtils
 
 
 @pytest.fixture
@@ -484,7 +485,7 @@ def test_geofence_sampling_within_bounds():
         lat, lon = env._sample_from_geofence(i)
 
         # Compute distance from center using Haversine formula
-        distance_km = env._haversine_km(center_lat, center_lon, lat, lon)
+        distance_km = GeometryUtils.haversine_distance(center_lat, center_lon, lat, lon)
 
         # Should be within the radius (allowing for small numerical errors)
         assert distance_km <= radius_km + 0.001
@@ -537,7 +538,9 @@ def test_geofence_sampling_in_reset():
 
             if gt_lat is not None and gt_lon is not None:
                 center_lat, center_lon = 47.620908, -122.353508
-                distance_km = env._haversine_km(center_lat, center_lon, gt_lat, gt_lon)
+                distance_km = GeometryUtils.haversine_distance(
+                    center_lat, center_lon, gt_lat, gt_lon
+                )
                 assert distance_km <= 1.0  # Within the geofence radius
 
 

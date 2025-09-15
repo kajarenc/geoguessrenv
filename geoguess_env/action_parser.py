@@ -1,8 +1,13 @@
 """
 Action parsing utilities for the GeoGuessr environment.
 
-This module provides robust action parsing with validation,
-error handling, and support for multiple action formats.
+Simplified to a single action format per TaskDescription.md:
+
+- Click:  {"op": "click", "value": [x, y]}
+- Answer: {"op": "answer", "value": [lat, lon]}
+
+Coordinates are validated and clamped. On parsing failure, a safe
+center click is returned by the fallback API.
 """
 
 import json
@@ -18,12 +23,7 @@ class ActionParsingError(Exception):
 
 
 class ActionParser:
-    """
-    Robust action parser for the GeoGuessr environment.
-
-    Handles parsing of click and answer actions from various input formats
-    with comprehensive validation and error recovery.
-    """
+    """Single-format action parser for the GeoGuessr environment."""
 
     def __init__(self, image_width: int, image_height: int):
         """
@@ -38,23 +38,13 @@ class ActionParser:
 
     def parse_action(self, action: Union[Dict, str]) -> Tuple[int, Tuple[float, float]]:
         """
-        Parse action from various input formats.
+        Parse action in the single supported format.
 
-        Supports multiple input formats:
-        - JSON string: '{"op":"click","value":[x,y]}'
-        - Dict with value: {"op": "click", "value": [x,y]}
-        - Dict with explicit keys: {"op": "click", "click": [x,y], "answer": [lat,lon]}
+        Supported inputs:
+        - JSON string: '{"op":"click","value":[x,y]}' or '{"op":"answer","value":[lat,lon]}'
+        - Dict: {"op": "click"|"answer", "value": [..,..]}
 
-        Args:
-            action: Action in various formats
-
-        Returns:
-            Tuple of (operation, values) where:
-            - operation: 0 for click, 1 for answer
-            - values: (x, y) for click, (lat, lon) for answer
-
-        Raises:
-            ActionParsingError: If action cannot be parsed
+        Returns (op_code, values): op_code is 0 for click, 1 for answer.
         """
         try:
             # Handle JSON string input
@@ -66,32 +56,25 @@ class ActionParser:
                     f"Action must be dict or JSON string, got {type(action)}"
                 )
 
-            # Extract operation
+            # Extract and normalize operation (string only)
             op = action.get("op")
-            if op is None:
+            if not isinstance(op, str):
                 raise ActionParsingError("Action missing 'op' field")
 
-            # Normalize operation
-            if isinstance(op, str):
-                op_code = (
-                    0
-                    if op.lower() == "click"
-                    else 1
-                    if op.lower() == "answer"
-                    else None
-                )
-                if op_code is None:
-                    raise ActionParsingError(f"Invalid operation: {op}")
-            else:
-                op_code = int(op)
-                if op_code not in (0, 1):
-                    raise ActionParsingError(f"Operation must be 0 or 1, got {op_code}")
+            op_lower = op.lower()
+            if op_lower not in ("click", "answer"):
+                raise ActionParsingError(f"Invalid operation: {op}")
 
-            # Extract values based on operation and available keys
-            if op_code == 0:  # Click
-                values = self._parse_click_values(action)
-            else:  # Answer
-                values = self._parse_answer_values(action)
+            # Extract values based on operation from single 'value' key
+            if "value" not in action:
+                raise ActionParsingError("Action missing 'value' field")
+
+            if op_lower == "click":
+                values = self._parse_click_values(action["value"])
+                op_code = 0
+            else:
+                values = self._parse_answer_values(action["value"])
+                op_code = 1
 
             return op_code, values
 
@@ -130,16 +113,8 @@ class ActionParser:
             else:
                 raise ActionParsingError("Action must be dict or JSON string")
 
-    def _parse_click_values(self, action: Dict) -> Tuple[float, float]:
-        """Parse click coordinates from action dictionary."""
-        # Try explicit 'click' key first
-        if "click" in action:
-            values = action["click"]
-        elif "value" in action:
-            values = action["value"]
-        else:
-            raise ActionParsingError("Click action missing coordinate values")
-
+    def _parse_click_values(self, values) -> Tuple[float, float]:
+        """Parse click coordinates from value array."""
         if not isinstance(values, (list, tuple)) or len(values) != 2:
             raise ActionParsingError(f"Click values must be [x, y] array, got {values}")
 
@@ -148,22 +123,14 @@ class ActionParser:
         except (ValueError, TypeError) as e:
             raise ActionParsingError(f"Click coordinates must be numeric: {e}")
 
-        # Validate and clamp coordinates
+        # Clamp to image bounds
         x = max(0, min(self.image_width - 1, x))
         y = max(0, min(self.image_height - 1, y))
 
         return x, y
 
-    def _parse_answer_values(self, action: Dict) -> Tuple[float, float]:
-        """Parse answer coordinates from action dictionary."""
-        # Try explicit 'answer' key first
-        if "answer" in action:
-            values = action["answer"]
-        elif "value" in action:
-            values = action["value"]
-        else:
-            raise ActionParsingError("Answer action missing coordinate values")
-
+    def _parse_answer_values(self, values) -> Tuple[float, float]:
+        """Parse answer coordinates from value array."""
         if not isinstance(values, (list, tuple)) or len(values) != 2:
             raise ActionParsingError(
                 f"Answer values must be [lat, lon] array, got {values}"
@@ -207,51 +174,16 @@ class ActionParser:
         return GeometryUtils.validate_coordinates(lat, lon)
 
     def create_click_action(self, x: float, y: float) -> Dict:
-        """
-        Create a properly formatted click action.
-
-        Args:
-            x: X coordinate
-            y: Y coordinate
-
-        Returns:
-            Click action dictionary
-        """
-        # Clamp coordinates
+        """Create a click action in the single supported format."""
         x = max(0, min(self.image_width - 1, x))
         y = max(0, min(self.image_height - 1, y))
-
-        return {
-            "op": "click",
-            "click": [int(x), int(y)],
-            "value": [int(x), int(y)],  # For backward compatibility
-        }
+        return {"op": "click", "value": [int(x), int(y)]}
 
     def create_answer_action(self, lat: float, lon: float) -> Dict:
-        """
-        Create a properly formatted answer action.
-
-        Args:
-            lat: Latitude in degrees
-            lon: Longitude in degrees
-
-        Returns:
-            Answer action dictionary
-        """
-        # Clamp coordinates
+        """Create an answer action in the single supported format."""
         lat, lon = GeometryUtils.clamp_coordinates(lat, lon)
-
-        return {
-            "op": "answer",
-            "answer": [lat, lon],
-            "value": [lat, lon],  # For backward compatibility
-        }
+        return {"op": "answer", "value": [lat, lon]}
 
     def get_center_click(self) -> Dict:
-        """
-        Get a safe center click action.
-
-        Returns:
-            Click action for center of image
-        """
+        """Return a safe center click action."""
         return self.create_click_action(self.image_width // 2, self.image_height // 2)

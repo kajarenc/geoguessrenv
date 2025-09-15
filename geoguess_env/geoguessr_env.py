@@ -2,7 +2,7 @@ import json
 import math
 import os
 import random
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -577,134 +577,8 @@ class GeoGuessrEnv(gym.Env):
 
         # Move to neighbor pano
         self._set_current_pano(next_id)
-        # Update camera heading to new pano's heading
+        # Update camera heading to new pano's heading (degrees -> radians)
         node = self._pano_graph.get(self.current_pano_id, {})
         heading = node.get("heading")
         if isinstance(heading, (int, float)):
-            self._heading_rad = float(heading)
-
-    # --- Geometry helpers ---
-    @staticmethod
-    def _normalize_angle(a: float) -> float:
-        tau = getattr(math, "tau", 2 * math.pi)
-        return a % tau
-
-    @staticmethod
-    def _angle_diff_rad(a: float, b: float) -> float:
-        """Smallest signed difference a-b in radians in [-pi, pi]."""
-        d = (a - b + math.pi) % (2 * math.pi) - math.pi
-        return d
-
-    @staticmethod
-    def _direction_to_x(direction: float, heading: float, image_width: int) -> int:
-        tau = getattr(math, "tau", 2 * math.pi)
-        d = (direction + heading) % tau
-        x_float = (d / tau) * float(image_width)
-        x = int(round(x_float))
-        if x < 0:
-            x = 0
-        if x >= image_width:
-            x = image_width - 1
-        return x
-
-    # --- Answer reward ---
-    def _compute_answer_reward(self, guess_lat: float, guess_lon: float) -> float:
-        if self.current_lat is None or self.current_lon is None:
-            return 0.0
-        d_km = self._haversine_km(
-            float(self.current_lat),
-            float(self.current_lon),
-            float(guess_lat),
-            float(guess_lon),
-        )
-        score = math.exp(-d_km / 400.0)
-        return float(score)
-
-    @staticmethod
-    def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        R = 6371.0
-        phi1 = math.radians(lat1)
-        phi2 = math.radians(lat2)
-        dphi = math.radians(lat2 - lat1)
-        dlambda = math.radians(lon2 - lon1)
-        a = (
-            math.sin(dphi / 2) ** 2
-            + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-        )
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-        return R * c
-
-    # --- Action parsing ---
-    def _parse_action(
-        self, action: Union[Dict, str]
-    ) -> Tuple[int, Tuple[float, float]]:
-        """
-        Returns a pair (op, value) where:
-        - op: 0 for click, 1 for answer
-        - value: (x, y) for click; (lat, lon) for answer
-        Accepts multiple formats:
-          - JSON string: '{"op":"click","value":[x,y]}' or '{"op":"answer","value":[lat,lon]}'
-          - Dict with value: {"op": "click", "value": [x,y]}
-          - Dict with explicit keys: {"op": "click", "click": [x,y], "answer": [lat,lon]}
-        """
-        # Handle JSON string input (from VLMBroker)
-        if isinstance(action, str):
-            try:
-                action = json.loads(action.strip())
-            except (json.JSONDecodeError, AttributeError):
-                # Invalid JSON string, fallback to center click
-                return 0, (
-                    float(self._image_width // 2),
-                    float(self._image_height // 2),
-                )
-
-        if isinstance(action, dict):
-            op = action.get("op")
-            if isinstance(op, str):
-                op_norm = 0 if op == "click" else 1
-            else:
-                op_norm = int(op) if op is not None else 0
-
-            # Prefer new explicit keys if present
-            if (
-                op_norm == 0
-                and "click" in action
-                and isinstance(action.get("click"), (list, tuple))
-            ):
-                val = action.get("click", [0, 0])
-            elif (
-                op_norm == 1
-                and "answer" in action
-                and isinstance(action.get("answer"), (list, tuple))
-            ):
-                val = action.get("answer", [0, 0])
-            else:
-                val = action.get("value", [0, 0])
-
-            if isinstance(val, (list, tuple)) and len(val) == 2:
-                if op_norm == 0:
-                    # click expects ints
-                    v0 = int(val[0])
-                    v1 = int(val[1])
-                else:
-                    v0 = float(val[0])
-                    v1 = float(val[1])
-            else:
-                if op_norm == 0:
-                    v0, v1 = 0, 0
-                else:
-                    v0, v1 = 0.0, 0.0
-
-            # Validate/clamp based on declared spaces
-            if op_norm == 0:
-                # click: bounds [0,1024] x [0,512] (note: should be exclusive upper bound)
-                v0 = max(int(self._click_low[0]), min(int(self._click_high[0]) - 1, v0))
-                v1 = max(int(self._click_low[1]), min(int(self._click_high[1]) - 1, v1))
-            else:
-                # answer: latitude/longitude bounds
-                v0 = max(-90.0, min(90.0, v0))
-                v1 = max(-180.0, min(180.0, v1))
-            return op_norm, (v0, v1)
-
-        # Fallback: treat as no-op click center
-        return 0, (float(self._image_width // 2), float(self._image_height // 2))
+            self._heading_rad = math.radians(float(heading))

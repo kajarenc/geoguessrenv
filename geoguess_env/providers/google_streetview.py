@@ -5,15 +5,18 @@ This module implements the PanoramaProvider interface for Google Street View
 using the streetview and streetlevel libraries.
 """
 
+import logging
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from streetlevel import streetview as streetlevel
 from streetview import search_panoramas
 
 from ..load_panorama_helper import load_single_panorama
 from .base import PanoramaMetadata, PanoramaProvider
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleStreetViewProvider(PanoramaProvider):
@@ -23,6 +26,21 @@ class GoogleStreetViewProvider(PanoramaProvider):
     Uses the streetview and streetlevel libraries to fetch panorama
     data from Google Street View.
     """
+
+    def __init__(
+        self,
+        rate_limit_qps: Optional[float] = None,
+        max_retries: int = 3,
+        min_capture_year: Optional[int] = None,
+    ):
+        super().__init__(
+            rate_limit_qps=rate_limit_qps,
+            max_retries=max_retries,
+            min_capture_year=min_capture_year,
+        )
+        # Keep metadata obtained during nearest pano lookup so we can
+        # reuse it when the asset manager asks for details shortly after.
+        self._prefetched_metadata: Dict[str, PanoramaMetadata] = {}
 
     @property
     def provider_name(self) -> str:
@@ -68,18 +86,30 @@ class GoogleStreetViewProvider(PanoramaProvider):
                 # Sort by date descending (latest first)
                 panos_sorted = sorted(panos, key=self._get_sort_key, reverse=True)
 
-                # Return first valid panorama ID
+                # Return first panorama whose metadata can be retrieved
                 for pano in panos_sorted:
-                    if pano.pano_id is not None:
-                        return pano.pano_id
+                    pano_id = pano.pano_id
+                    if pano_id is None:
+                        continue
+
+                    # Reuse metadata obtained earlier during candidate checks
+                    metadata = self._prefetched_metadata.get(pano_id)
+                    if metadata is None:
+                        metadata = self._fetch_metadata_with_retries(pano_id)
+
+                    if metadata:
+                        self._prefetched_metadata[pano_id] = metadata
+                        return pano_id
 
                 return None
 
             except Exception as e:
                 attempt += 1
                 if attempt >= self.max_retries:
-                    print(
-                        f"Failed to find panorama after {self.max_retries} attempts: {e}"
+                    logger.warning(
+                        "Failed to find panorama after %d attempts: %s",
+                        self.max_retries,
+                        e,
                     )
                     return None
 
@@ -99,55 +129,10 @@ class GoogleStreetViewProvider(PanoramaProvider):
         Returns:
             Panorama metadata if found, None otherwise
         """
-        attempt = 0
-        while attempt < self.max_retries:
-            try:
-                # Apply rate limiting if specified
-                if self.rate_limit_qps:
-                    time.sleep(1.0 / self.rate_limit_qps)
+        if pano_id in self._prefetched_metadata:
+            return self._prefetched_metadata.pop(pano_id)
 
-                pano = streetlevel.find_panorama_by_id(pano_id)
-
-                if not pano:
-                    return None
-
-                # Convert links to simplified format
-                links = []
-                if hasattr(pano, "links") and pano.links:
-                    for link in pano.links:
-                        if hasattr(link, "pano") and hasattr(link.pano, "id"):
-                            links.append(
-                                {
-                                    "id": link.pano.id,
-                                    "direction": getattr(link, "direction", 0.0),
-                                }
-                            )
-
-                return PanoramaMetadata(
-                    pano_id=pano.id,
-                    lat=pano.lat,
-                    lon=pano.lon,
-                    heading=pano.heading,
-                    pitch=getattr(pano, "pitch", None),
-                    roll=getattr(pano, "roll", None),
-                    date=self._format_date(getattr(pano, "date", None)),
-                    elevation=getattr(pano, "elevation", None),
-                    links=links if links else None,
-                )
-
-            except Exception as e:
-                attempt += 1
-                if attempt >= self.max_retries:
-                    print(
-                        f"Failed to get metadata for {pano_id} after {self.max_retries} attempts: {e}"
-                    )
-                    return None
-
-                # Exponential backoff
-                wait_time = (2**attempt) * 0.1
-                time.sleep(wait_time)
-
-        return None
+        return self._fetch_metadata_with_retries(pano_id)
 
     def download_panorama_image(self, pano_id: str, output_path: Path) -> bool:
         """
@@ -176,14 +161,19 @@ class GoogleStreetViewProvider(PanoramaProvider):
                 if output_path.exists() and output_path.stat().st_size > 0:
                     return True
                 else:
-                    print(f"Downloaded file for {pano_id} is empty or missing")
+                    logger.warning(
+                        "Downloaded file for %s is empty or missing", pano_id
+                    )
                     return False
 
             except Exception as e:
                 attempt += 1
                 if attempt >= self.max_retries:
-                    print(
-                        f"Failed to download image for {pano_id} after {self.max_retries} attempts: {e}"
+                    logger.warning(
+                        "Failed to download image for %s after %d attempts: %s",
+                        pano_id,
+                        self.max_retries,
+                        e,
                     )
                     return False
 
@@ -234,6 +224,61 @@ class GoogleStreetViewProvider(PanoramaProvider):
                         queue.append((link_id, depth + 1))
 
         return connected
+
+    def _fetch_metadata_with_retries(self, pano_id: str) -> Optional[PanoramaMetadata]:
+        """Fetch metadata with retry/backoff handling."""
+        attempt = 0
+        while attempt < self.max_retries:
+            try:
+                if self.rate_limit_qps:
+                    time.sleep(1.0 / self.rate_limit_qps)
+
+                pano = streetlevel.find_panorama_by_id(pano_id)
+                if not pano:
+                    logger.warning(
+                        "Panorama %s not found when fetching metadata", pano_id
+                    )
+                    return None
+
+                links = []
+                if hasattr(pano, "links") and pano.links:
+                    for link in pano.links:
+                        if hasattr(link, "pano") and hasattr(link.pano, "id"):
+                            links.append(
+                                {
+                                    "id": link.pano.id,
+                                    "direction": getattr(link, "direction", 0.0),
+                                }
+                            )
+
+                metadata = PanoramaMetadata(
+                    pano_id=pano.id,
+                    lat=pano.lat,
+                    lon=pano.lon,
+                    heading=pano.heading,
+                    pitch=getattr(pano, "pitch", None),
+                    roll=getattr(pano, "roll", None),
+                    date=self._format_date(getattr(pano, "date", None)),
+                    elevation=getattr(pano, "elevation", None),
+                    links=links if links else None,
+                )
+                return metadata
+
+            except Exception as e:
+                attempt += 1
+                if attempt >= self.max_retries:
+                    logger.warning(
+                        "Failed to fetch metadata for %s after %d attempts: %s",
+                        pano_id,
+                        self.max_retries,
+                        e,
+                    )
+                    return None
+
+                wait_time = (2**attempt) * 0.1
+                time.sleep(wait_time)
+
+        return None
 
     def _filter_by_capture_year(self, panos):
         """Filter panoramas by minimum capture year."""

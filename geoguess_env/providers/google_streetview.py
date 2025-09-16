@@ -7,7 +7,7 @@ using the streetview and streetlevel libraries.
 
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from streetlevel import streetview as streetlevel
 from streetview import search_panoramas
@@ -28,6 +28,14 @@ class GoogleStreetViewProvider(PanoramaProvider):
     def provider_name(self) -> str:
         """Get the name of this provider."""
         return "google_streetview"
+
+    @property
+    def attribution_info(self) -> Dict[str, str]:
+        return {
+            "provider": "Google Street View",
+            "license": "Imagery © Google",
+            "source": "https://www.google.com/streetview/",
+        }
 
     def find_nearest_panorama(self, lat: float, lon: float) -> Optional[str]:
         """

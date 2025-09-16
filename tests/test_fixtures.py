@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from geoguess_env.asset_manager import AssetManager
+from geoguess_env.cache_manager import CacheManager
 from geoguess_env.config import GeofenceConfig, GeoGuessrConfig
 from geoguess_env.providers.base import PanoramaMetadata, PanoramaProvider
 
@@ -215,12 +216,15 @@ def create_cached_metadata_file(cache_dir: Path, root_pano_id: str, graph_data: 
 
 def create_cached_image_file(cache_dir: Path, pano_id: str, image: np.ndarray):
     """Create a cached image file for testing."""
-    images_dir = cache_dir / "images"
-    images_dir.mkdir(exist_ok=True)
+    cache_manager = CacheManager(
+        cache_root=cache_dir,
+        provider_name="google_streetview",
+        attribution={"provider": "Google Street View"},
+    )
 
     from PIL import Image
 
-    image_path = images_dir / f"{pano_id}.jpg"
+    image_path = cache_manager.get_image_path(pano_id)
     Image.fromarray(image).save(image_path)
 
 

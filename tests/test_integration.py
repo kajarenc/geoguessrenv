@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
+from geoguess_env.cache_manager import CacheManager
 from geoguess_env.geoguessr_env import GeoGuessrEnv
 
 
@@ -91,7 +92,12 @@ class TestGeoGuessrEnvironmentIntegration:
             mock_streetlevel.find_panorama_by_id.return_value = mock_panorama
 
             # Create test image
-            test_image_path = Path(temp_dir) / "images" / "test_pano_123.jpg"
+            cache_manager = CacheManager(
+                Path(temp_dir),
+                provider_name="google_streetview",
+                attribution={"provider": "Google Street View"},
+            )
+            test_image_path = cache_manager.get_image_path("test_pano_123")
             test_image_path.parent.mkdir(parents=True, exist_ok=True)
 
             from PIL import Image

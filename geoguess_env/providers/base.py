@@ -126,6 +126,11 @@ class PanoramaProvider(ABC):
         """Get the name of this provider."""
         pass
 
+    @property
+    def attribution_info(self) -> Dict[str, str]:
+        """Return attribution metadata for this provider."""
+        return {"provider": self.provider_name}
+
     def compute_image_hash(self, image_path: Path) -> str:
         """
         Compute SHA256 hash of an image file.

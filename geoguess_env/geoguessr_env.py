@@ -173,7 +173,7 @@ class GeoGuessrEnv(gym.Env):
                 "No starting coordinates provided (either input_lat/lon or geofence required)"
             )
 
-        # Get or fetch panorama graph using asset manager
+        # Get or fetch a panorama graph using asset manager
         # Round coordinates to 6 decimal places for consistent cache handling
         lat = round(lat, 6)
         lon = round(lon, 6)

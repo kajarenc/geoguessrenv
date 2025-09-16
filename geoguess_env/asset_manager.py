@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+from .cache_manager import CacheManager
 from .providers.base import PanoramaAsset, PanoramaMetadata, PanoramaProvider
 
 
@@ -35,14 +36,15 @@ class AssetManager:
             max_connected_panoramas: Maximum number of connected panoramas to fetch
         """
         self.provider = provider
-        self.cache_root = Path(cache_root)
+        self.cache_manager = CacheManager(
+            cache_root=Path(cache_root),
+            provider_name=self.provider.provider_name,
+            attribution=self.provider.attribution_info,
+        )
+        self.cache_root = self.cache_manager.cache_root
+        self.images_dir = self.cache_manager.images_dir
+        self.metadata_dir = self.cache_manager.metadata_dir
         self.max_connected_panoramas = max_connected_panoramas
-
-        # Create cache directories
-        self.images_dir = self.cache_root / "images"
-        self.metadata_dir = self.cache_root / "metadata"
-        self.images_dir.mkdir(parents=True, exist_ok=True)
-        self.metadata_dir.mkdir(parents=True, exist_ok=True)
 
         # Cache for in-memory metadata
         self._metadata_cache: Dict[str, PanoramaMetadata] = {}
@@ -93,9 +95,9 @@ class AssetManager:
         if not metadata:
             return None
 
-        # Check for image
-        image_path = self.images_dir / f"{pano_id}.jpg"
-        if not image_path.exists():
+        # Resolve image path via cache manager
+        image_path = self.cache_manager.get_existing_image_path(pano_id)
+        if image_path is None:
             return None
 
         # Compute and validate hash
@@ -141,7 +143,27 @@ class AssetManager:
         """
         result = {"valid": [], "invalid": [], "missing": []}
 
-        # Check all cached metadata files
+        manifest_entries = self.cache_manager.export_manifest()
+        if manifest_entries:
+            for pano_id, entry in manifest_entries.items():
+                relpath = entry.get("image_relpath")
+                image_path = (
+                    self.cache_root / relpath
+                    if relpath
+                    else self.cache_manager.get_image_path(pano_id)
+                )
+                if image_path.exists():
+                    computed_hash = self.provider.compute_image_hash(image_path)
+                    stored_hash = entry.get("image_sha256")
+                    if stored_hash and stored_hash != computed_hash:
+                        result["invalid"].append(pano_id)
+                    else:
+                        result["valid"].append(pano_id)
+                else:
+                    result["missing"].append(pano_id)
+            return result
+
+        # Fallback to legacy validation when manifest is absent
         for metadata_file in self.metadata_dir.glob("*_mini.jsonl"):
             try:
                 with open(metadata_file, "r", encoding="utf-8") as f:
@@ -152,9 +174,12 @@ class AssetManager:
                             if not pano_id:
                                 continue
 
-                            image_path = self.images_dir / f"{pano_id}.jpg"
+                            image_path = self.cache_manager.get_existing_image_path(
+                                pano_id
+                            )
+                            if image_path is None:
+                                image_path = self.images_dir / f"{pano_id}.jpg"
                             if image_path.exists():
-                                # Validate image hash if available
                                 stored_hash = self._get_stored_hash(pano_id)
                                 computed_hash = self.provider.compute_image_hash(
                                     image_path
@@ -194,8 +219,8 @@ class AssetManager:
                 self._metadata_cache.pop(pano_id, None)
 
                 # Remove image file
-                image_path = self.images_dir / f"{pano_id}.jpg"
-                if image_path.exists():
+                image_path = self.cache_manager.get_existing_image_path(pano_id)
+                if image_path and image_path.exists():
                     image_path.unlink()
 
                 # Note: We don't remove from metadata files as they may contain
@@ -377,8 +402,25 @@ class AssetManager:
 
     def _get_cached_metadata(self, pano_id: str) -> Optional[PanoramaMetadata]:
         """Get metadata from disk cache."""
-        # This is a simplified implementation - in production we'd want
-        # more efficient metadata storage and retrieval
+        # Primary source: manifest managed by CacheManager
+        entry = self.cache_manager.get_manifest_entry(pano_id)
+        if entry:
+            try:
+                return PanoramaMetadata(
+                    pano_id=entry.get("pano_id", pano_id),
+                    lat=entry.get("lat"),
+                    lon=entry.get("lon"),
+                    heading=entry.get("heading", 0.0),
+                    pitch=entry.get("pitch"),
+                    roll=entry.get("roll"),
+                    date=entry.get("date"),
+                    elevation=entry.get("elevation"),
+                    links=entry.get("links"),
+                )
+            except Exception:
+                pass
+
+        # Fallback to legacy cache files for backward compatibility
         for metadata_file in self.metadata_dir.glob("*_mini.jsonl"):
             try:
                 with open(metadata_file, "r", encoding="utf-8") as f:
@@ -388,9 +430,9 @@ class AssetManager:
                             if data.get("id") == pano_id:
                                 return PanoramaMetadata(
                                     pano_id=data["id"],
-                                    lat=data["lat"],
-                                    lon=data["lon"],
-                                    heading=data["heading"],
+                                    lat=data.get("lat"),
+                                    lon=data.get("lon"),
+                                    heading=data.get("heading", 0.0),
                                     pitch=data.get("pitch"),
                                     roll=data.get("roll"),
                                     date=data.get("date"),
@@ -410,7 +452,7 @@ class AssetManager:
             return False
 
         # Download image if not cached
-        image_path = self.images_dir / f"{pano_id}.jpg"
+        image_path = self.cache_manager.get_image_path(pano_id)
         if not image_path.exists():
             success = self.provider.download_panorama_image(pano_id, image_path)
             if not success:
@@ -420,6 +462,19 @@ class AssetManager:
         image_hash = self.provider.compute_image_hash(image_path)
         self._store_hash(pano_id, image_hash)
 
+        # Update manifest to include this asset
+        attribution = (
+            self.provider.attribution_info
+            if hasattr(self.provider, "attribution_info")
+            else None
+        )
+        self.cache_manager.record_manifest_entry(
+            metadata,
+            image_path=image_path,
+            image_hash=image_hash,
+            attribution=attribution,
+        )
+
         return True
 
     def _is_asset_cached(self, pano_id: str) -> bool:
@@ -428,8 +483,7 @@ class AssetManager:
         if not metadata:
             return False
 
-        image_path = self.images_dir / f"{pano_id}.jpg"
-        return image_path.exists()
+        return self.cache_manager.image_exists(pano_id)
 
     def _save_graph_to_cache(self, root_pano_id: str, graph: Dict[str, Dict]):
         """Save graph to cache files."""

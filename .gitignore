@@ -177,7 +177,7 @@ gymnasium_env/load/podzdamerplatzimages/
 cache/*
 !cache/metadata/
 cache/metadata/*
-!cache/metadata/nearest_pano_cache.json
+cache/metadata/nearest_pano_cache.json
 
 # macOS
 .DS_Store

@@ -6,6 +6,7 @@ Implements the command-line interface specified in TaskDescription.md.
 import argparse
 import csv
 import json
+import logging
 import os
 from typing import Dict, List, Optional
 
@@ -322,7 +323,7 @@ def save_results_csv(results: List[Dict], output_path: str) -> None:
 def main() -> None:
     """Main entry point."""
     args = parse_args()
-
+    logging.basicConfig(level=logging.INFO)
     try:
         if args.mode == "online":
             results = run_online_episodes(args)

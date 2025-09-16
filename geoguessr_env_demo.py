@@ -1,3 +1,4 @@
+import logging
 import os
 
 import gymnasium as gym
@@ -19,6 +20,7 @@ def ensure_registered() -> None:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO)
     ensure_registered()
 
     # Use cache directory aligned with TaskDescription.md spec

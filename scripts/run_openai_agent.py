@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 
 import gymnasium as gym
@@ -36,6 +37,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO)
     args = parse_args()
     # Load .env for OPENAI_API_KEY if present
     try:

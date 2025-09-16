@@ -1,3 +1,4 @@
+import logging
 import math
 import random
 from typing import Dict, List, Optional, Tuple
@@ -13,6 +14,8 @@ from .asset_manager import AssetManager
 from .config import GeoGuessrConfig
 from .geometry_utils import GeometryUtils
 from .providers.google_streetview import GoogleStreetViewProvider
+
+logger = logging.getLogger(__name__)
 
 
 class GeoGuessrEnv(gym.Env):
@@ -192,6 +195,14 @@ class GeoGuessrEnv(gym.Env):
 
         # Find root panorama ID (first key in graph)
         self.pano_root_id = next(iter(self._pano_graph.keys()))
+
+        root_metadata = self._pano_graph.get(self.pano_root_id, {})
+        root_date = root_metadata.get("date")
+        logger.info(
+            "Starting episode at root pano %s (capture date: %s)",
+            self.pano_root_id,
+            root_date or "unknown",
+        )
 
         # Preload images for all panoramas in the graph to ensure smooth navigation
         if not offline_mode:

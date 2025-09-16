@@ -6,10 +6,13 @@ data fetching, caching, and validation for the GeoGuessr environment.
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from .providers.base import PanoramaAsset, PanoramaMetadata, PanoramaProvider
+
+logger = logging.getLogger(__name__)
 
 
 class AssetManager:
@@ -219,7 +222,15 @@ class AssetManager:
                 with open(cache_file, "r", encoding="utf-8") as f:
                     cache_data = json.load(f)
                     if cache_key in cache_data:
-                        return cache_data[cache_key]
+                        cached_pano_id = cache_data[cache_key]
+                        if cached_pano_id:
+                            logger.info(
+                                "Nearest panorama for (%.6f, %.6f) resolved from cache: %s",
+                                rounded_lat,
+                                rounded_lon,
+                                cached_pano_id,
+                            )
+                        return cached_pano_id
             except Exception:
                 pass
 
@@ -228,6 +239,19 @@ class AssetManager:
 
         # Fetch from provider using rounded coordinates for consistency
         pano_id = self.provider.find_nearest_panorama(rounded_lat, rounded_lon)
+        if pano_id:
+            logger.info(
+                "Nearest panorama for (%.6f, %.6f) fetched from provider: %s",
+                rounded_lat,
+                rounded_lon,
+                pano_id,
+            )
+        else:
+            logger.warning(
+                "No panorama found near coordinates (%.6f, %.6f)",
+                rounded_lat,
+                rounded_lon,
+            )
 
         # Update cache
         if pano_id:
@@ -299,6 +323,7 @@ class AssetManager:
                                 "lat": data.get("lat"),
                                 "lon": data.get("lon"),
                                 "heading": data.get("heading"),
+                                "date": data.get("date"),
                                 "links": links,
                             }
         except Exception as e:
@@ -312,10 +337,12 @@ class AssetManager:
         graph = {}
         visited = set()
         queue = [root_pano_id]
+        queued: Set[str] = {root_pano_id}
         processed_count = 0
 
         while queue and processed_count < self.max_connected_panoramas:
             pano_id = queue.pop(0)
+            queued.discard(pano_id)
             print(f"FETCHING PANORAMA: {pano_id}")
 
             if pano_id in visited:
@@ -338,14 +365,23 @@ class AssetManager:
             if metadata.links:
                 for link in metadata.links:
                     link_id = link.get("id")
-                    if link_id and link_id not in visited:
+                    if not link_id:
+                        continue
+
+                    links.append(link)
+
+                    # Only queue panoramas we haven't processed yet. Track a
+                    # separate queued set so we don't enqueue duplicates while
+                    # still retaining back-links in the stored graph.
+                    if link_id not in visited and link_id not in queued:
                         queue.append(link_id)
-                        links.append(link)
+                        queued.add(link_id)
 
             graph[pano_id] = {
                 "lat": metadata.lat,
                 "lon": metadata.lon,
                 "heading": metadata.heading,
+                "date": metadata.date,
                 "links": links,
             }
 
@@ -372,6 +408,9 @@ class AssetManager:
         metadata = self.provider.get_panorama_metadata(pano_id)
         if metadata:
             self._metadata_cache[pano_id] = metadata
+            logger.info("Downloaded metadata for panorama %s", pano_id)
+        else:
+            logger.warning("Failed to download metadata for panorama %s", pano_id)
 
         return metadata
 
@@ -413,8 +452,19 @@ class AssetManager:
         image_path = self.images_dir / f"{pano_id}.jpg"
         if not image_path.exists():
             success = self.provider.download_panorama_image(pano_id, image_path)
-            if not success:
+            if success:
+                logger.info(
+                    "Downloaded panorama image for %s to %s", pano_id, image_path
+                )
+            else:
+                logger.warning(
+                    "Failed to download panorama image for %s to %s",
+                    pano_id,
+                    image_path,
+                )
                 return False
+        else:
+            logger.debug("Panorama image already cached for %s", pano_id)
 
         # Compute and store hash
         image_hash = self.provider.compute_image_hash(image_path)

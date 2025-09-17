@@ -7,12 +7,26 @@ data fetching, caching, and validation for the GeoGuessr environment.
 
 import json
 import logging
+from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set
+
+import numpy as np
+from PIL import Image
 
 from .providers.base import PanoramaAsset, PanoramaMetadata, PanoramaProvider
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PanoramaGraphResult:
+    """Result of preparing a panorama graph for an episode."""
+
+    root_id: str
+    graph: Dict[str, Dict]
+    missing_assets: Set[str]
 
 
 class AssetManager:
@@ -49,37 +63,8 @@ class AssetManager:
 
         # Cache for in-memory metadata
         self._metadata_cache: Dict[str, PanoramaMetadata] = {}
-
-    def get_or_fetch_panorama_graph(
-        self, root_lat: float, root_lon: float, offline_mode: bool = False
-    ) -> Dict[str, Dict]:
-        """
-        Get or fetch a panorama graph starting from given coordinates.
-
-        Args:
-            root_lat: Starting latitude
-            root_lon: Starting longitude
-            offline_mode: If True, only use cached data
-
-        Returns:
-            Dictionary mapping panorama IDs to their metadata and links
-
-        Raises:
-            ValueError: If no panorama found and offline_mode is True
-        """
-        # Try to find root panorama
-        root_pano_id = self._get_or_find_nearest_panorama(
-            root_lat, root_lon, offline_mode
-        )
-
-        if not root_pano_id:
-            if offline_mode:
-                raise ValueError(f"No cached panorama found for {root_lat}, {root_lon}")
-            else:
-                raise ValueError(f"No panorama found for {root_lat}, {root_lon}")
-
-        # Load panorama graph
-        return self._load_panorama_graph(root_pano_id, offline_mode)
+        self._image_cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
+        self._image_cache_capacity = max(8, max_connected_panoramas * 2)
 
     def get_panorama_asset(self, pano_id: str) -> Optional[PanoramaAsset]:
         """
@@ -190,11 +175,13 @@ class AssetManager:
                 self.images_dir.mkdir(parents=True, exist_ok=True)
                 self.metadata_dir.mkdir(parents=True, exist_ok=True)
             self._metadata_cache.clear()
+            self._image_cache.clear()
         else:
             # Clear specific panoramas
             for pano_id in pano_ids:
                 # Remove from memory cache
                 self._metadata_cache.pop(pano_id, None)
+                self._image_cache.pop(pano_id, None)
 
                 # Remove image file
                 image_path = self.images_dir / f"{pano_id}.jpg"
@@ -204,6 +191,128 @@ class AssetManager:
                 # Note: We don't remove from metadata files as they may contain
                 # multiple panoramas. In a production system, we'd want more
                 # sophisticated metadata management.
+
+    def resolve_nearest_panorama(
+        self, lat: float, lon: float, offline_mode: bool
+    ) -> Optional[str]:
+        """Public wrapper for nearest-panorama lookup."""
+
+        return self._get_or_find_nearest_panorama(lat, lon, offline_mode)
+
+    def prepare_graph(
+        self, root_lat: float, root_lon: float, offline_mode: bool = False
+    ) -> PanoramaGraphResult:
+        """Prepare a panorama graph with metadata and images hydrated."""
+
+        root_pano_id = self._get_or_find_nearest_panorama(
+            root_lat, root_lon, offline_mode
+        )
+
+        if not root_pano_id:
+            raise ValueError(f"No panorama found for {root_lat}, {root_lon}")
+
+        raw_graph = self._load_panorama_graph(root_pano_id, offline_mode)
+
+        if not raw_graph:
+            raw_graph = self._fetch_and_build_graph(
+                root_pano_id, allow_network=not offline_mode
+            )
+
+            if not raw_graph:
+                if offline_mode:
+                    return PanoramaGraphResult(
+                        root_id=root_pano_id, graph={}, missing_assets=set()
+                    )
+                raise ValueError(
+                    f"No panorama graph available for coordinates {root_lat}, {root_lon}"
+                )
+
+        sanitized_graph: Dict[str, Dict] = {}
+        missing_assets: Set[str] = set()
+
+        allow_network = not offline_mode
+
+        for pano_id in raw_graph.keys():
+            metadata = self._get_or_fetch_metadata(pano_id, allow_network=allow_network)
+            if not metadata:
+                missing_assets.add(pano_id)
+                continue
+
+            if not self._is_asset_cached(pano_id):
+                if offline_mode:
+                    missing_assets.add(pano_id)
+                    continue
+
+                success = self._fetch_and_cache_asset(
+                    pano_id, allow_network=allow_network
+                )
+                if not success or not self._is_asset_cached(pano_id):
+                    missing_assets.add(pano_id)
+                    continue
+
+            sanitized_graph[pano_id] = {
+                "lat": self._coerce_scalar(metadata.lat),
+                "lon": self._coerce_scalar(metadata.lon),
+                "heading": self._coerce_scalar(metadata.heading),
+                "date": metadata.date if isinstance(metadata.date, str) else None,
+                "links": self._normalize_links(metadata.links),
+            }
+
+        if missing_assets and not offline_mode:
+            logger.warning(
+                "Missing assets for panoramas: %s",
+                ", ".join(sorted(missing_assets)),
+            )
+
+        if root_pano_id not in sanitized_graph:
+            message = f"Root panorama {root_pano_id} unavailable after preparation"
+            if offline_mode:
+                logger.warning(message)
+                return PanoramaGraphResult(
+                    root_id=root_pano_id, graph={}, missing_assets={root_pano_id}
+                )
+            raise ValueError(message)
+
+        if sanitized_graph:
+            valid_nodes = set(sanitized_graph.keys())
+            for node_id, data in sanitized_graph.items():
+                pruned_links = []
+                for link in data.get("links", []) or []:
+                    target_id = link.get("id")
+                    if target_id in valid_nodes:
+                        pruned_links.append(link)
+                data["links"] = pruned_links
+
+            self._save_graph_to_cache(root_pano_id, sanitized_graph)
+
+        return PanoramaGraphResult(
+            root_id=root_pano_id, graph=sanitized_graph, missing_assets=missing_assets
+        )
+
+    def get_image_array(self, pano_id: str) -> Optional[np.ndarray]:
+        """Return RGB image array for a panorama, caching in memory."""
+
+        cached = self._image_cache.get(pano_id)
+        if cached is not None:
+            self._image_cache.move_to_end(pano_id)
+            return cached
+
+        image_path = self.images_dir / f"{pano_id}.jpg"
+        if not image_path.exists():
+            return None
+
+        try:
+            with Image.open(image_path) as img:
+                array = np.array(img.convert("RGB"), dtype=np.uint8)
+        except Exception as exc:
+            logger.warning("Failed to load image for %s: %s", pano_id, exc)
+            return None
+
+        self._image_cache[pano_id] = array
+        if len(self._image_cache) > self._image_cache_capacity:
+            self._image_cache.popitem(last=False)
+
+        return array
 
     def _get_or_find_nearest_panorama(
         self, lat: float, lon: float, offline_mode: bool
@@ -332,7 +441,9 @@ class AssetManager:
 
         return graph
 
-    def _fetch_and_build_graph(self, root_pano_id: str) -> Dict[str, Dict]:
+    def _fetch_and_build_graph(
+        self, root_pano_id: str, allow_network: bool = True
+    ) -> Dict[str, Dict]:
         """Fetch panorama data and build graph."""
         graph = {}
         visited = set()
@@ -351,12 +462,14 @@ class AssetManager:
             visited.add(pano_id)
 
             # Fetch complete asset (metadata + image)
-            asset_success = self._fetch_and_cache_asset(pano_id)
+            asset_success = self._fetch_and_cache_asset(
+                pano_id, allow_network=allow_network
+            )
             if not asset_success:
                 continue
 
             # Get metadata (should now be cached)
-            metadata = self._get_or_fetch_metadata(pano_id)
+            metadata = self._get_or_fetch_metadata(pano_id, allow_network=allow_network)
             if not metadata:
                 continue
 
@@ -392,7 +505,9 @@ class AssetManager:
 
         return graph
 
-    def _get_or_fetch_metadata(self, pano_id: str) -> Optional[PanoramaMetadata]:
+    def _get_or_fetch_metadata(
+        self, pano_id: str, allow_network: bool = True
+    ) -> Optional[PanoramaMetadata]:
         """Get metadata from cache or fetch from provider."""
         # Check memory cache
         if pano_id in self._metadata_cache:
@@ -405,6 +520,9 @@ class AssetManager:
             return metadata
 
         # Fetch from provider
+        if not allow_network:
+            return None
+
         metadata = self.provider.get_panorama_metadata(pano_id)
         if metadata:
             self._metadata_cache[pano_id] = metadata
@@ -416,41 +534,22 @@ class AssetManager:
 
     def _get_cached_metadata(self, pano_id: str) -> Optional[PanoramaMetadata]:
         """Get metadata from disk cache."""
-        # This is a simplified implementation - in production we'd want
-        # more efficient metadata storage and retrieval
-        for metadata_file in self.metadata_dir.glob("*_mini.jsonl"):
-            try:
-                with open(metadata_file, "r", encoding="utf-8") as f:
-                    for line in f:
-                        if line.strip():
-                            data = json.loads(line)
-                            if data.get("id") == pano_id:
-                                return PanoramaMetadata(
-                                    pano_id=data["id"],
-                                    lat=data["lat"],
-                                    lon=data["lon"],
-                                    heading=data["heading"],
-                                    pitch=data.get("pitch"),
-                                    roll=data.get("roll"),
-                                    date=data.get("date"),
-                                    elevation=data.get("elevation"),
-                                    links=data.get("links"),
-                                )
-            except Exception:
-                continue
+        metadata = self._get_cached_metadata_from_legacy(pano_id)
+        return metadata
 
-        return None
-
-    def _fetch_and_cache_asset(self, pano_id: str) -> bool:
+    def _fetch_and_cache_asset(self, pano_id: str, allow_network: bool = True) -> bool:
         """Fetch and cache a complete panorama asset."""
         # Get or fetch metadata
-        metadata = self._get_or_fetch_metadata(pano_id)
+        metadata = self._get_or_fetch_metadata(pano_id, allow_network=allow_network)
         if not metadata:
             return False
 
         # Download image if not cached
         image_path = self.images_dir / f"{pano_id}.jpg"
         if not image_path.exists():
+            if not allow_network:
+                return False
+
             success = self.provider.download_panorama_image(pano_id, image_path)
             if success:
                 logger.info(
@@ -466,6 +565,8 @@ class AssetManager:
         else:
             logger.debug("Panorama image already cached for %s", pano_id)
 
+        self._image_cache.pop(pano_id, None)
+
         # Compute and store hash
         image_hash = self.provider.compute_image_hash(image_path)
         self._store_hash(pano_id, image_hash)
@@ -474,7 +575,9 @@ class AssetManager:
 
     def _is_asset_cached(self, pano_id: str) -> bool:
         """Check if asset is fully cached."""
-        metadata = self._get_cached_metadata(pano_id)
+        metadata = self._metadata_cache.get(pano_id)
+        if metadata is None:
+            metadata = self._get_cached_metadata(pano_id)
         if not metadata:
             return False
 
@@ -494,22 +597,33 @@ class AssetManager:
                     if metadata:
                         cache_data = {
                             "id": metadata.pano_id,
-                            "lat": metadata.lat,
-                            "lon": metadata.lon,
-                            "heading": metadata.heading,
-                            "pitch": metadata.pitch,
-                            "roll": metadata.roll,
-                            "date": metadata.date,
-                            "elevation": metadata.elevation,
+                            "lat": self._coerce_scalar(metadata.lat),
+                            "lon": self._coerce_scalar(metadata.lon),
+                            "heading": self._coerce_scalar(metadata.heading),
+                            "pitch": self._coerce_scalar(metadata.pitch),
+                            "roll": self._coerce_scalar(metadata.roll),
+                            "date": metadata.date
+                            if isinstance(metadata.date, str)
+                            else None,
+                            "elevation": self._coerce_scalar(metadata.elevation),
                             "links": [],
                         }
 
                         if metadata.links:
                             for link in metadata.links:
+                                link_id = link.get("id")
+                                if link_id is None and isinstance(
+                                    link.get("pano"), dict
+                                ):
+                                    link_id = link["pano"].get("id")
+
+                                if not link_id:
+                                    continue
+
                                 cache_data["links"].append(
                                     {
-                                        "pano": {"id": link["id"]},
-                                        "direction": link["direction"],
+                                        "pano": {"id": link_id},
+                                        "direction": link.get("direction"),
                                     }
                                 )
 
@@ -528,3 +642,79 @@ class AssetManager:
         # In a production system, we'd store hashes in a dedicated file
         # For now, this is a no-op
         pass
+
+    def _metadata_from_dict(self, data: Dict[str, object]) -> PanoramaMetadata:
+        """Construct PanoramaMetadata from stored dict."""
+
+        pano_id = data.get("pano_id") or data.get("id")
+        if not pano_id:
+            raise ValueError("Metadata payload missing pano_id")
+
+        links = data.get("links") or []
+        return PanoramaMetadata(
+            pano_id=pano_id,
+            lat=data.get("lat"),
+            lon=data.get("lon"),
+            heading=data.get("heading"),
+            pitch=data.get("pitch"),
+            roll=data.get("roll"),
+            date=data.get("date"),
+            elevation=data.get("elevation"),
+            links=links,
+        )
+
+    def _get_cached_metadata_from_legacy(
+        self, pano_id: str
+    ) -> Optional[PanoramaMetadata]:
+        """Fallback metadata lookup scanning legacy mini files."""
+
+        for metadata_file in self.metadata_dir.glob("*_mini.jsonl"):
+            try:
+                with open(metadata_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if not line.strip():
+                            continue
+                        data = json.loads(line)
+                        if data.get("id") == pano_id:
+                            try:
+                                return self._metadata_from_dict(data)
+                            except Exception:
+                                return None
+            except Exception:
+                continue
+
+        return None
+
+    def _normalize_links(self, links: Optional[List[Dict]]) -> List[Dict]:
+        """Normalize link payload into env-friendly structure."""
+
+        normalized: List[Dict] = []
+        if not links:
+            return normalized
+
+        for link in links:
+            if not isinstance(link, dict):
+                continue
+
+            link_id = link.get("id")
+            if link_id is None and isinstance(link.get("pano"), dict):
+                link_id = link["pano"].get("id")
+
+            if not link_id:
+                continue
+
+            direction = link.get("direction")
+            normalized.append({"id": link_id, "direction": direction})
+
+        return normalized
+
+    def _coerce_scalar(self, value):
+        """Convert provider values into JSON-friendly scalars."""
+
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None

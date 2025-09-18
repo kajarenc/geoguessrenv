@@ -165,7 +165,7 @@ class GeoGuessrEnv(gym.Env):
         super().reset(seed=seed)
 
         # Determine starting coordinates with retry logic for geofence sampling
-        if self.config.geofence and self.config.mode == "online":
+        if self.config.geofence:
             lat, lon = self._sample_valid_coordinates_from_geofence(seed)
         else:
             lat, lon = self.config.input_lat, self.config.input_lon
@@ -179,11 +179,8 @@ class GeoGuessrEnv(gym.Env):
         # Round coordinates to 6 decimal places for consistent cache handling
         lat = round(lat, 6)
         lon = round(lon, 6)
-        offline_mode = self.config.mode == "offline"
         try:
-            graph_result = self.asset_manager.prepare_graph(
-                root_lat=lat, root_lon=lon, offline_mode=offline_mode
-            )
+            graph_result = self.asset_manager.prepare_graph(root_lat=lat, root_lon=lon)
         except Exception as e:
             raise ValueError(f"Failed to load panorama data for {lat}, {lon}: {e}")
 
@@ -441,7 +438,7 @@ class GeoGuessrEnv(gym.Env):
             # Check if we can find a panorama at this location
             try:
                 pano_id = self.asset_manager.resolve_nearest_panorama(
-                    rounded_lat, rounded_lon, offline_mode=False
+                    rounded_lat, rounded_lon
                 )
                 if pano_id:
                     print(

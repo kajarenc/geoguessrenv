@@ -192,37 +192,25 @@ class AssetManager:
                 # multiple panoramas. In a production system, we'd want more
                 # sophisticated metadata management.
 
-    def resolve_nearest_panorama(
-        self, lat: float, lon: float, offline_mode: bool
-    ) -> Optional[str]:
+    def resolve_nearest_panorama(self, lat: float, lon: float) -> Optional[str]:
         """Public wrapper for nearest-panorama lookup."""
 
-        return self._get_or_find_nearest_panorama(lat, lon, offline_mode)
+        return self._get_or_find_nearest_panorama(lat, lon)
 
-    def prepare_graph(
-        self, root_lat: float, root_lon: float, offline_mode: bool = False
-    ) -> PanoramaGraphResult:
+    def prepare_graph(self, root_lat: float, root_lon: float) -> PanoramaGraphResult:
         """Prepare a panorama graph with metadata and images hydrated."""
 
-        root_pano_id = self._get_or_find_nearest_panorama(
-            root_lat, root_lon, offline_mode
-        )
+        root_pano_id = self._get_or_find_nearest_panorama(root_lat, root_lon)
 
         if not root_pano_id:
             raise ValueError(f"No panorama found for {root_lat}, {root_lon}")
 
-        raw_graph = self._load_panorama_graph(root_pano_id, offline_mode)
+        raw_graph = self._load_panorama_graph(root_pano_id)
 
         if not raw_graph:
-            raw_graph = self._fetch_and_build_graph(
-                root_pano_id, allow_network=not offline_mode
-            )
+            raw_graph = self._fetch_and_build_graph(root_pano_id)
 
             if not raw_graph:
-                if offline_mode:
-                    return PanoramaGraphResult(
-                        root_id=root_pano_id, graph={}, missing_assets=set()
-                    )
                 raise ValueError(
                     f"No panorama graph available for coordinates {root_lat}, {root_lon}"
                 )
@@ -230,22 +218,14 @@ class AssetManager:
         sanitized_graph: Dict[str, Dict] = {}
         missing_assets: Set[str] = set()
 
-        allow_network = not offline_mode
-
         for pano_id in raw_graph.keys():
-            metadata = self._get_or_fetch_metadata(pano_id, allow_network=allow_network)
+            metadata = self._get_or_fetch_metadata(pano_id)
             if not metadata:
                 missing_assets.add(pano_id)
                 continue
 
             if not self._is_asset_cached(pano_id):
-                if offline_mode:
-                    missing_assets.add(pano_id)
-                    continue
-
-                success = self._fetch_and_cache_asset(
-                    pano_id, allow_network=allow_network
-                )
+                success = self._fetch_and_cache_asset(pano_id)
                 if not success or not self._is_asset_cached(pano_id):
                     missing_assets.add(pano_id)
                     continue
@@ -258,7 +238,7 @@ class AssetManager:
                 "links": self._normalize_links(metadata.links),
             }
 
-        if missing_assets and not offline_mode:
+        if missing_assets:
             logger.warning(
                 "Missing assets for panoramas: %s",
                 ", ".join(sorted(missing_assets)),
@@ -266,11 +246,6 @@ class AssetManager:
 
         if root_pano_id not in sanitized_graph:
             message = f"Root panorama {root_pano_id} unavailable after preparation"
-            if offline_mode:
-                logger.warning(message)
-                return PanoramaGraphResult(
-                    root_id=root_pano_id, graph={}, missing_assets={root_pano_id}
-                )
             raise ValueError(message)
 
         if sanitized_graph:
@@ -314,9 +289,7 @@ class AssetManager:
 
         return array
 
-    def _get_or_find_nearest_panorama(
-        self, lat: float, lon: float, offline_mode: bool
-    ) -> Optional[str]:
+    def _get_or_find_nearest_panorama(self, lat: float, lon: float) -> Optional[str]:
         """Get panorama ID from cache or find nearest."""
         # Round coordinates to 6 decimal places for consistent cache handling
         rounded_lat = round(lat, 6)
@@ -342,9 +315,6 @@ class AssetManager:
                         return cached_pano_id
             except Exception:
                 pass
-
-        if offline_mode:
-            return None
 
         # Fetch from provider using rounded coordinates for consistency
         pano_id = self.provider.find_nearest_panorama(rounded_lat, rounded_lon)
@@ -379,20 +349,13 @@ class AssetManager:
 
         return pano_id
 
-    def _load_panorama_graph(
-        self, root_pano_id: str, offline_mode: bool
-    ) -> Dict[str, Dict]:
+    def _load_panorama_graph(self, root_pano_id: str) -> Dict[str, Dict]:
         """Load panorama graph from cache or fetch if needed."""
-        # Try to load from cache first
         graph = self._load_cached_graph(root_pano_id)
 
         if graph:
             return graph
 
-        if offline_mode:
-            return {}
-
-        # Fetch and build graph
         return self._fetch_and_build_graph(root_pano_id)
 
     def _load_cached_graph(self, root_pano_id: str) -> Dict[str, Dict]:
@@ -441,9 +404,7 @@ class AssetManager:
 
         return graph
 
-    def _fetch_and_build_graph(
-        self, root_pano_id: str, allow_network: bool = True
-    ) -> Dict[str, Dict]:
+    def _fetch_and_build_graph(self, root_pano_id: str) -> Dict[str, Dict]:
         """Fetch panorama data and build graph."""
         graph = {}
         visited = set()
@@ -462,14 +423,12 @@ class AssetManager:
             visited.add(pano_id)
 
             # Fetch complete asset (metadata + image)
-            asset_success = self._fetch_and_cache_asset(
-                pano_id, allow_network=allow_network
-            )
+            asset_success = self._fetch_and_cache_asset(pano_id)
             if not asset_success:
                 continue
 
             # Get metadata (should now be cached)
-            metadata = self._get_or_fetch_metadata(pano_id, allow_network=allow_network)
+            metadata = self._get_or_fetch_metadata(pano_id)
             if not metadata:
                 continue
 
@@ -505,9 +464,7 @@ class AssetManager:
 
         return graph
 
-    def _get_or_fetch_metadata(
-        self, pano_id: str, allow_network: bool = True
-    ) -> Optional[PanoramaMetadata]:
+    def _get_or_fetch_metadata(self, pano_id: str) -> Optional[PanoramaMetadata]:
         """Get metadata from cache or fetch from provider."""
         # Check memory cache
         if pano_id in self._metadata_cache:
@@ -518,10 +475,6 @@ class AssetManager:
         if metadata:
             self._metadata_cache[pano_id] = metadata
             return metadata
-
-        # Fetch from provider
-        if not allow_network:
-            return None
 
         metadata = self.provider.get_panorama_metadata(pano_id)
         if metadata:
@@ -537,19 +490,16 @@ class AssetManager:
         metadata = self._get_cached_metadata_from_legacy(pano_id)
         return metadata
 
-    def _fetch_and_cache_asset(self, pano_id: str, allow_network: bool = True) -> bool:
+    def _fetch_and_cache_asset(self, pano_id: str) -> bool:
         """Fetch and cache a complete panorama asset."""
         # Get or fetch metadata
-        metadata = self._get_or_fetch_metadata(pano_id, allow_network=allow_network)
+        metadata = self._get_or_fetch_metadata(pano_id)
         if not metadata:
             return False
 
         # Download image if not cached
         image_path = self.images_dir / f"{pano_id}.jpg"
         if not image_path.exists():
-            if not allow_network:
-                return False
-
             success = self.provider.download_panorama_image(pano_id, image_path)
             if success:
                 logger.info(

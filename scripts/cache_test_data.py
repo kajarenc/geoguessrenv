@@ -2,9 +2,9 @@
 """
 Script to fetch and cache panorama data for test coordinates.
 
-This script runs the environment in online mode to fetch and cache
-panorama data for the coordinates used in tests, so that tests can
-run in CI without needing internet access.
+This script runs the environment to fetch and cache panorama data for
+the coordinates used in tests, so that the suite can run in CI without
+needing internet access.
 """
 
 import sys
@@ -25,10 +25,9 @@ def cache_test_data():
 
     print(f"Fetching panorama data for {test_lat}, {test_lon}...")
 
-    # Configure environment for online mode to fetch data
+    # Configure environment to fetch data and populate the cache
     config = {
         "cache_root": str(repo_root / "cache"),
-        "mode": "online",  # Enable online fetching
         "input_lat": test_lat,
         "input_lon": test_lon,
         "max_steps": 5,

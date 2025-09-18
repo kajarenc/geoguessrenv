@@ -24,12 +24,14 @@ class StubProvider(PanoramaProvider):
         self.find_calls += 1
         return "root"
 
-    def get_panorama_metadata(self, pano_id: str) -> PanoramaMetadata:
+    def get_panorama_metadata(self, pano_id: str) -> PanoramaMetadata | None:
         self.metadata_calls += 1
-        return self._metadata_map[pano_id]
+        return self._metadata_map.get(pano_id)
 
     def download_panorama_image(self, pano_id: str, output_path: Path) -> bool:
         self.download_calls += 1
+        if pano_id not in self._metadata_map:
+            return False
         Image.new("RGB", (8, 4), color=self._image_color).save(output_path)
         return True
 
@@ -41,24 +43,24 @@ class StubProvider(PanoramaProvider):
         return "stub"
 
 
-class OfflineOnlyProvider(PanoramaProvider):
-    """Provider that should never be contacted during offline runs."""
+class CacheOnlyProvider(PanoramaProvider):
+    """Provider that should never be contacted when data is cached."""
 
     def find_nearest_panorama(self, lat: float, lon: float) -> str:
-        raise AssertionError("offline run should not query provider")
+        raise AssertionError("cache should satisfy nearest lookup")
 
     def get_panorama_metadata(self, pano_id: str) -> PanoramaMetadata:
-        raise AssertionError("offline run should not query provider")
+        raise AssertionError("cache should provide metadata")
 
     def download_panorama_image(self, pano_id: str, output_path: Path) -> bool:
-        raise AssertionError("offline run should not download images")
+        raise AssertionError("cache should provide images")
 
     def get_connected_panoramas(self, pano_id: str, max_depth: int = 1):
         return []
 
     @property
     def provider_name(self) -> str:
-        return "offline-only"
+        return "cache-only"
 
 
 @pytest.fixture
@@ -82,7 +84,7 @@ def test_prepare_graph_prunes_links_to_missing_nodes(tmp_path, root_metadata):
         provider=provider, cache_root=tmp_path, max_connected_panoramas=1
     )
 
-    result = manager.prepare_graph(10.0, 20.0, offline_mode=False)
+    result = manager.prepare_graph(10.0, 20.0)
 
     assert result.missing_assets == set()
     assert set(result.graph.keys()) == {"root"}
@@ -92,7 +94,7 @@ def test_prepare_graph_prunes_links_to_missing_nodes(tmp_path, root_metadata):
     assert provider.download_calls >= 1
 
 
-def test_prepare_graph_offline_uses_cached_metadata(tmp_path):
+def test_prepare_graph_uses_cached_metadata_without_network(tmp_path):
     metadata_dir = tmp_path / "metadata"
     images_dir = tmp_path / "images"
     metadata_dir.mkdir(parents=True, exist_ok=True)
@@ -114,10 +116,10 @@ def test_prepare_graph_offline_uses_cached_metadata(tmp_path):
         Image.new("RGB", (8, 4), color=(20, 40, 60)).save(images_dir / f"{pano_id}.jpg")
 
     manager = AssetManager(
-        provider=OfflineOnlyProvider(), cache_root=tmp_path, max_connected_panoramas=8
+        provider=CacheOnlyProvider(), cache_root=tmp_path, max_connected_panoramas=8
     )
 
-    result = manager.prepare_graph(10.0, 20.0, offline_mode=True)
+    result = manager.prepare_graph(10.0, 20.0)
 
     assert result.missing_assets == set()
     assert set(result.graph.keys()) == {"root", "neighbor"}
@@ -142,7 +144,7 @@ def test_get_image_array_uses_cache(tmp_path, root_metadata):
         provider=provider, cache_root=tmp_path, max_connected_panoramas=2
     )
 
-    manager.prepare_graph(0.0, 0.0, offline_mode=False)
+    manager.prepare_graph(0.0, 0.0)
 
     first = manager.get_image_array("root")
     assert first is not None

@@ -84,7 +84,6 @@ class TestGeoGuessrConfig:
         """Test default configuration values."""
         config = GeoGuessrConfig()
 
-        assert config.mode == "offline"
         assert config.max_steps == 40
         assert config.seed is None
         assert config.input_lat is None
@@ -121,11 +120,6 @@ class TestGeoGuessrConfig:
         with pytest.raises(ValueError, match="Invalid longitude"):
             GeoGuessrConfig(input_lon=-181.0)
 
-    def test_config_with_invalid_mode(self):
-        """Test configuration with invalid mode."""
-        with pytest.raises(ValueError, match="Invalid mode"):
-            GeoGuessrConfig(mode="invalid")
-
     def test_config_with_invalid_max_steps(self):
         """Test configuration with invalid max_steps."""
         with pytest.raises(ValueError, match="max_steps must be positive"):
@@ -155,11 +149,9 @@ class TestGeoGuessrConfig:
     def test_from_dict_empty(self):
         """Test creating config from empty dict."""
         config = GeoGuessrConfig.from_dict(None)
-        assert config.mode == "offline"
         assert config.max_steps == 40
 
         config = GeoGuessrConfig.from_dict({})
-        assert config.mode == "offline"
         assert config.max_steps == 40
 
     def test_from_dict_basic_params(self):
@@ -174,11 +166,11 @@ class TestGeoGuessrConfig:
 
         config = GeoGuessrConfig.from_dict(config_dict)
 
-        assert config.mode == "online"
         assert config.max_steps == 50
         assert config.input_lat == 40.7128
         assert config.input_lon == -74.0060
         assert config.cache_root == Path("/tmp/cache")
+        assert not hasattr(config, "mode")
 
     def test_from_dict_with_geofence(self):
         """Test creating config from dict with geofence."""
@@ -257,7 +249,6 @@ class TestGeoGuessrConfig:
         )
 
         config = GeoGuessrConfig(
-            mode="online",
             max_steps=30,
             input_lat=40.7128,
             input_lon=-74.0060,
@@ -267,11 +258,11 @@ class TestGeoGuessrConfig:
 
         config_dict = config.to_dict()
 
-        assert config_dict["mode"] == "online"
         assert config_dict["max_steps"] == 30
         assert config_dict["input_lat"] == 40.7128
         assert config_dict["input_lon"] == -74.0060
         assert config_dict["cache_root"] == "/custom/cache"
+        assert "mode" not in config_dict
 
         assert "geofence" in config_dict
         assert config_dict["geofence"]["type"] == "circle"
@@ -292,7 +283,6 @@ class TestGeoGuessrConfig:
     def test_config_round_trip(self):
         """Test config to_dict -> from_dict round trip."""
         original_config = GeoGuessrConfig(
-            mode="online",
             max_steps=25,
             input_lat=47.6062,
             input_lon=-122.3321,
@@ -302,7 +292,6 @@ class TestGeoGuessrConfig:
         config_dict = original_config.to_dict()
         restored_config = GeoGuessrConfig.from_dict(config_dict)
 
-        assert restored_config.mode == original_config.mode
         assert restored_config.max_steps == original_config.max_steps
         assert restored_config.input_lat == original_config.input_lat
         assert restored_config.input_lon == original_config.input_lon

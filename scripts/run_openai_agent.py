@@ -56,7 +56,6 @@ def main() -> None:
         ENV_ID,
         render_mode="human" if args.render else None,
         config={
-            "mode": "online",  # Enable fetching data from providers
             "cache_root": cache_root,
             "input_lat": args.input_lat,
             "input_lon": args.input_lon,

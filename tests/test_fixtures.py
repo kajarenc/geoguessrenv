@@ -31,7 +31,6 @@ def temp_cache_dir():
 def basic_config(temp_cache_dir):
     """Basic test configuration."""
     return GeoGuessrConfig(
-        mode="offline",
         cache_root=temp_cache_dir,
         input_lat=47.620908,
         input_lon=-122.353508,
@@ -45,9 +44,7 @@ def config_with_geofence(temp_cache_dir):
     geofence = GeofenceConfig(
         type="circle", center={"lat": 47.620908, "lon": -122.353508}, radius_km=10.0
     )
-    return GeoGuessrConfig(
-        mode="online", cache_root=temp_cache_dir, geofence=geofence, max_steps=20
-    )
+    return GeoGuessrConfig(cache_root=temp_cache_dir, geofence=geofence, max_steps=20)
 
 
 @pytest.fixture

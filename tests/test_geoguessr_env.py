@@ -442,7 +442,6 @@ def test_geofence_sampling_deterministic():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "geofence": geofence,
         "max_steps": 5,
     }
@@ -475,7 +474,6 @@ def test_geofence_sampling_within_bounds():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "geofence": geofence,
         "max_steps": 5,
     }
@@ -507,7 +505,6 @@ def test_geofence_sampling_in_reset():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "geofence": geofence,
         "max_steps": 5,
         "seed": 123,
@@ -555,7 +552,6 @@ def test_geofence_sampling_with_fallback():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "input_lat": input_lat,
         "input_lon": input_lon,
         "max_steps": 5,
@@ -599,7 +595,6 @@ def test_geofence_invalid_type():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "geofence": geofence,
         "max_steps": 5,
     }
@@ -618,7 +613,6 @@ def test_geofence_invalid_circular_config():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "geofence": geofence,
         "max_steps": 5,
     }

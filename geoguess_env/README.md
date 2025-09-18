@@ -19,11 +19,9 @@ This package implements the baseline components specified in TaskDescription.md 
 - Configurable max navigation steps and sweep patterns
 
 ### ✅ CLI Runner (`run_baseline.py`)
-- Command-line interface matching TaskDescription.md specification
-- Online mode: sample & cache while running
-- Offline mode: replay from saved sessions
+- Command-line interface for sampling episodes while caching assets
 - CSV output with episode results
-- Session replay saving/loading
+- Respects existing cache entries to avoid redundant network calls
 
 ## Usage Examples
 
@@ -32,25 +30,14 @@ This package implements the baseline components specified in TaskDescription.md 
 uv run python geoguessr_env_demo.py
 ```
 
-### CLI Usage (Online Mode)
+### CLI Usage
 ```bash
 uv run python -m geoguess_env.run_baseline \
-  --mode online \
   --provider gsv \
   --episodes 30 \
   --cache ./cache \
   --seed 123 \
-  --freeze-run ./cache/replays/session_123.json \
   --out results_online.csv
-```
-
-### CLI Usage (Offline Replay)
-```bash
-uv run python -m geoguess_env.run_baseline \
-  --mode offline \
-  --replay ./cache/replays/session_123.json \
-  --cache ./cache \
-  --out results_offline.csv
 ```
 
 ## Integration with Existing Environment
@@ -90,7 +77,7 @@ This baseline implementation provides the foundation for:
 
 1. **Enhanced geofencing** - Add proper geographic sampling boundaries
 2. **Deterministic replay** - Full session replay with exact episode reproduction
-3. **Cache structure alignment** - Move to `cache/{images,metadata,replays}/` structure
+3. **Cache structure alignment** - Move to `cache/{images,metadata}/` structure
 4. **Package restructuring** - Create proper `geoguess_env/` package structure
 5. **Advanced agents** - Build on the baseline for more sophisticated navigation strategies
 

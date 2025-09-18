@@ -12,7 +12,9 @@ class StubAgent(OpenAIVisionAgent):
         super().__init__(cfg)
         self._stub_response = stub_response
 
-    def _chat_completions(self, messages):  # type: ignore[override]
+    def _chat_completions(  # type: ignore[override]
+        self, messages, tools, tool_choice
+    ):
         return self._stub_response
 
 

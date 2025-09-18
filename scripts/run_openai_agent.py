@@ -83,7 +83,13 @@ def main() -> None:
         if steps >= agent_cfg.max_nav_steps:
             # Force answer if we hit step budget
             # Use a naive guess at (0,0); the agent should generally answer earlier
-            action = {"op": "answer", "answer": [0.0, 0.0]}
+            parser = getattr(env, "action_parser", None)
+            if parser is None and hasattr(env, "unwrapped"):
+                parser = getattr(env.unwrapped, "action_parser", None)
+            if parser is not None:
+                action = parser.create_answer_action(0.0, 0.0)
+            else:
+                action = {"op": "answer", "value": [0.0, 0.0]}
         else:
             action = agent.act(obs, info)
 

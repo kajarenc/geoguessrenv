@@ -48,10 +48,9 @@ def get_nearest_pano_id(
 
     # Cache miss or no cache directory supplied → perform network lookup
     panos = search_panoramas(lat=lat, lon=lon)
+    result: str | None = None
 
-    if not panos:
-        result: str | None = None
-    else:
+    if panos:
 
         def sort_key(pano):
             ds = getattr(pano, "date", None)
@@ -76,11 +75,9 @@ def get_nearest_pano_id(
                 result = pano.pano_id
                 break
         else:
-            result = None
             print(
                 "Could not find a valid pano_id in the search results for given coordinates"
             )
-        return result
 
     # Persist into cache if applicable
     if cache_path is not None:

@@ -137,54 +137,54 @@ class GeoGuessrConfig:
         if not config_dict:
             return cls()
 
-        # Extract nested configurations
-        provider_config = ProviderConfig(**config_dict.get("provider_config", {}))
-        render_config = RenderConfig(**config_dict.get("render_config", {}))
-        nav_config = NavigationConfig(**config_dict.get("nav_config", {}))
+        config_data = dict(config_dict)
 
-        # Handle legacy parameter names for backward compatibility
-        legacy_mapping = {
-            "provider": "provider_config.provider",
-            "rate_limit_qps": "provider_config.rate_limit_qps",
-            "max_fetch_retries": "provider_config.max_fetch_retries",
-            "min_capture_year": "provider_config.min_capture_year",
-            "render_mode": "render_config.render_mode",
-            "arrow_hit_radius_px": "nav_config.arrow_hit_radius_px",
-            "arrow_min_conf": "nav_config.arrow_min_conf",
+        allowed_top_level = {
+            "max_steps",
+            "seed",
+            "input_lat",
+            "input_lon",
+            "geofence",
+            "cache_root",
+            "provider_config",
+            "render_config",
+            "nav_config",
         }
+        ignored_keys = {"mode"}
 
-        # Apply legacy parameters
-        for old_key, new_path in legacy_mapping.items():
-            if old_key in config_dict:
-                parts = new_path.split(".")
-                if parts[0] == "provider_config":
-                    setattr(provider_config, parts[1], config_dict[old_key])
-                elif parts[0] == "render_config":
-                    setattr(render_config, parts[1], config_dict[old_key])
-                elif parts[0] == "nav_config":
-                    setattr(nav_config, parts[1], config_dict[old_key])
+        unexpected = set(config_data) - allowed_top_level - ignored_keys
+        if unexpected:
+            raise ValueError(
+                "Unsupported configuration keys provided. "
+                f"Remove legacy parameters: {sorted(unexpected)}"
+            )
+
+        # Extract nested configurations
+        provider_config = ProviderConfig(**config_data.get("provider_config", {}))
+        render_config = RenderConfig(**config_data.get("render_config", {}))
+        nav_config = NavigationConfig(**config_data.get("nav_config", {}))
 
         # Handle geofence
         geofence = None
-        if "geofence" in config_dict and config_dict["geofence"]:
-            # Filter geofence parameters to only include known fields
-            geofence_data = config_dict["geofence"]
-            geofence_params = {
-                key: value
-                for key, value in geofence_data.items()
-                if key in {"type", "center", "radius_km", "polygon"}
-            }
-            geofence = GeofenceConfig(**geofence_params)
+        if "geofence" in config_data:
+            geofence_data = config_data["geofence"]
+            if isinstance(geofence_data, GeofenceConfig):
+                geofence = geofence_data
+            elif geofence_data:
+                geofence_params = {
+                    key: value
+                    for key, value in geofence_data.items()
+                    if key in {"type", "center", "radius_km", "polygon"}
+                }
+                geofence = GeofenceConfig(**geofence_params)
 
         # Create main config
+        primary_keys = {"max_steps", "seed", "input_lat", "input_lon", "cache_root"}
         main_config = {
-            key: value
-            for key, value in config_dict.items()
-            if key not in {"provider_config", "render_config", "nav_config", "geofence"}
-            and key not in legacy_mapping
+            key: config_data[key] for key in primary_keys if key in config_data
         }
 
-        # Remove deprecated keys that no longer exist on the dataclass
+        # Ignore "mode" for now if present without treating it as an error
         main_config.pop("mode", None)
 
         return cls(

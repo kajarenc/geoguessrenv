@@ -92,8 +92,10 @@ def run_episodes(args) -> List[Dict]:
     default_lat, default_lon = 47.620908, -122.353508
 
     # Create base environment config
+    provider_config = {"provider": args.provider} if args.provider else {}
+
     base_env_config = {
-        "provider": args.provider,
+        "provider_config": provider_config,
         "geofence": geofence,
         "cache_root": args.cache,
         "seed": args.seed,

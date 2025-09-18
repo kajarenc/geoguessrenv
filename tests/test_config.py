@@ -2,7 +2,7 @@
 Tests for configuration management.
 
 Tests configuration validation, creation from dictionaries,
-and backward compatibility with legacy parameter names.
+and enforcement of supported parameter names.
 """
 
 from pathlib import Path
@@ -219,8 +219,8 @@ class TestGeoGuessrConfig:
         assert config.nav_config.arrow_hit_radius_px == 32
         assert config.nav_config.arrow_min_conf == 0.8
 
-    def test_from_dict_legacy_parameters(self):
-        """Test backward compatibility with legacy parameter names."""
+    def test_from_dict_rejects_legacy_parameters(self):
+        """Legacy top-level config keys should raise a helpful error."""
         config_dict = {
             "provider": "mapillary",
             "rate_limit_qps": 1.5,
@@ -231,16 +231,8 @@ class TestGeoGuessrConfig:
             "arrow_min_conf": 0.7,
         }
 
-        config = GeoGuessrConfig.from_dict(config_dict)
-
-        # Check that legacy parameters are mapped correctly
-        assert config.provider_config.provider == "mapillary"
-        assert config.provider_config.rate_limit_qps == 1.5
-        assert config.provider_config.max_fetch_retries == 4
-        assert config.provider_config.min_capture_year == 2020
-        assert config.render_config.render_mode == "human"
-        assert config.nav_config.arrow_hit_radius_px == 30
-        assert config.nav_config.arrow_min_conf == 0.7
+        with pytest.raises(ValueError, match="legacy parameters"):
+            GeoGuessrConfig.from_dict(config_dict)
 
     def test_to_dict(self):
         """Test converting config to dictionary."""

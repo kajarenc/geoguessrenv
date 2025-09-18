@@ -69,7 +69,6 @@ Arguments:
 Run the baseline agent with geofence:
 ```
 uv run python -m geoguess_env.run_baseline \
-  --mode online \
   --provider gsv \
   --episodes 2 \
   --geofence geofences/seattle_15km.json \

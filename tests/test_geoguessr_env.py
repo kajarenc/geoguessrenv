@@ -531,7 +531,10 @@ def test_geofence_sampling_in_reset():
         with patch.object(
             env.asset_manager, "get_image_array", return_value=test_image
         ):
-            obs, info = env.reset()
+            with patch.object(
+                env.asset_manager, "resolve_nearest_panorama", return_value="test_pano"
+            ):
+                obs, info = env.reset()
 
             # Verify that sampling was called (coordinates should be different from defaults)
             # Since we're using geofence sampling, the lat/lon should be within the geofence

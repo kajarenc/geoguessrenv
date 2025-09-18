@@ -127,6 +127,27 @@ def test_prepare_graph_uses_cached_metadata_without_network(tmp_path):
     assert {link["id"] for link in result.graph["neighbor"]["links"]} == {"root"}
 
 
+def test_resolve_nearest_panorama_writes_and_reads_cache(tmp_path, root_metadata):
+    provider = StubProvider({"root": root_metadata})
+    manager = AssetManager(
+        provider=provider, cache_root=tmp_path, max_connected_panoramas=1
+    )
+
+    first_lookup = manager.resolve_nearest_panorama(10.0, 20.0)
+    cache_file = tmp_path / "metadata" / "nearest_pano_cache.json"
+
+    assert first_lookup == "root"
+    assert provider.find_calls == 1
+    assert cache_file.exists()
+
+    cache_contents = json.loads(cache_file.read_text(encoding="utf-8"))
+    assert cache_contents == {"10.0,20.0": "root"}
+
+    second_lookup = manager.resolve_nearest_panorama(10.0, 20.0)
+    assert second_lookup == "root"
+    assert provider.find_calls == 1, "Second lookup should use persisted cache"
+
+
 def test_get_image_array_uses_cache(tmp_path, root_metadata):
     neighbor_metadata = PanoramaMetadata(
         pano_id="neighbor",

@@ -72,7 +72,7 @@ uv run python -m geoguess_env.run_baseline \
   --mode online \
   --provider gsv \
   --episodes 2 \
-  --geofence geofences/seattle_5km.json \
+  --geofence geofences/seattle_15km.json \
   --cache ./cache \
   --seed 22 \
   --out results_online.csv

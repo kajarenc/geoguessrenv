@@ -5,6 +5,6 @@
     "lon": -122.353508
   },
   "radius_km": 15.0,
-  "name": "Seattle 10km radius",
+  "name": "Seattle 15km radius",
   "description": "Circular geofence centered on Seattle with 15 kilometer radius"
 }

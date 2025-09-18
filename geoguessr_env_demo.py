@@ -51,7 +51,7 @@ def main() -> None:
     total_reward = 0.0
     done = False
     while not done and steps < 11:
-        # On the 3rd step, click at screen position (x=940, y=256)
+        # On the 3rd step, click at screen position (x=740, y=256)
         if steps == 2:
             action = {"op": "click", "value": [740, 256]}
         elif steps == 10:

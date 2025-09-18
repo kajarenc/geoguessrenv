@@ -33,7 +33,6 @@ def main() -> None:
         render_mode="human",
         config={
             "provider": "gsv",
-            "mode": "online",
             "cache_root": cache_root,
             "input_lat": input_lat,
             "input_lon": input_lon,

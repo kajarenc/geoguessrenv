@@ -20,8 +20,8 @@ def get_nearest_pano_id(
 
     If ``metadata_dir`` is provided, a JSON cache file ``nearest_pano_cache.json``
     will be used to store and retrieve previously resolved pano ids keyed by
-    rounded coordinates. This avoids repeated network calls and enables
-    deterministic offline replays for identical inputs.
+    rounded coordinates. This avoids repeated network calls and keeps
+    deterministic behaviour for identical inputs.
     """
     cache_path = None
     cache_key = f"{round(float(lat), 6)},{round(float(lon), 6)}"

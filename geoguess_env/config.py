@@ -71,8 +71,6 @@ class GeoGuessrConfig:
     validation and sensible defaults for all environment parameters.
     """
 
-    # Core behavior
-    mode: str = "offline"  # 'online', 'offline'
     max_steps: int = 40
     seed: Optional[int] = None
 
@@ -97,12 +95,6 @@ class GeoGuessrConfig:
         """Validate and normalize configuration."""
         # Normalize cache_root to Path
         self.cache_root = Path(self.cache_root)
-
-        # Validate mode
-        if self.mode not in ("online", "offline"):
-            raise ValueError(
-                f"Invalid mode: {self.mode}. Must be 'online' or 'offline'"
-            )
 
         # Validate coordinates if provided
         if self.input_lat is not None:
@@ -192,6 +184,9 @@ class GeoGuessrConfig:
             and key not in legacy_mapping
         }
 
+        # Remove deprecated keys that no longer exist on the dataclass
+        main_config.pop("mode", None)
+
         return cls(
             **main_config,
             geofence=geofence,
@@ -208,7 +203,6 @@ class GeoGuessrConfig:
             Dictionary representation of configuration
         """
         result = {
-            "mode": self.mode,
             "max_steps": self.max_steps,
             "seed": self.seed,
             "input_lat": self.input_lat,

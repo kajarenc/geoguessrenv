@@ -5,6 +5,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
+from geoguess_env.asset_manager import PanoramaGraphResult
 from geoguess_env.geoguessr_env import GeoGuessrEnv
 from geoguess_env.geometry_utils import GeometryUtils
 
@@ -441,7 +442,6 @@ def test_geofence_sampling_deterministic():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "geofence": geofence,
         "max_steps": 5,
     }
@@ -474,7 +474,6 @@ def test_geofence_sampling_within_bounds():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "geofence": geofence,
         "max_steps": 5,
     }
@@ -506,7 +505,6 @@ def test_geofence_sampling_in_reset():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "geofence": geofence,
         "max_steps": 5,
         "seed": 123,
@@ -524,12 +522,15 @@ def test_geofence_sampling_in_reset():
         }
     }
 
-    with patch.object(
-        env.asset_manager, "get_or_fetch_panorama_graph", return_value=mock_graph
-    ):
-        # Mock image for observation
+    graph_result = PanoramaGraphResult(
+        root_id="test_pano", graph=mock_graph, missing_assets=set()
+    )
+
+    with patch.object(env.asset_manager, "prepare_graph", return_value=graph_result):
         test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
-        with patch.object(env, "_get_observation", return_value={"image": test_image}):
+        with patch.object(
+            env.asset_manager, "get_image_array", return_value=test_image
+        ):
             obs, info = env.reset()
 
             # Verify that sampling was called (coordinates should be different from defaults)
@@ -551,7 +552,6 @@ def test_geofence_sampling_with_fallback():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "input_lat": input_lat,
         "input_lon": input_lon,
         "max_steps": 5,
@@ -569,12 +569,15 @@ def test_geofence_sampling_with_fallback():
         }
     }
 
-    with patch.object(
-        env.asset_manager, "get_or_fetch_panorama_graph", return_value=mock_graph
-    ):
-        # Mock image for observation
+    graph_result = PanoramaGraphResult(
+        root_id="test_pano", graph=mock_graph, missing_assets=set()
+    )
+
+    with patch.object(env.asset_manager, "prepare_graph", return_value=graph_result):
         test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
-        with patch.object(env, "_get_observation", return_value={"image": test_image}):
+        with patch.object(
+            env.asset_manager, "get_image_array", return_value=test_image
+        ):
             obs, info = env.reset()
 
             # Should have used the input coordinates
@@ -592,7 +595,6 @@ def test_geofence_invalid_type():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "geofence": geofence,
         "max_steps": 5,
     }
@@ -611,7 +613,6 @@ def test_geofence_invalid_circular_config():
 
     config = {
         "cache_root": "/tmp",
-        "mode": "online",
         "geofence": geofence,
         "max_steps": 5,
     }

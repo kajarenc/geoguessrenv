@@ -21,7 +21,6 @@ class TestGeoGuessrEnvironmentIntegration:
         """Test that environment can be initialized with new architecture."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config = {
-                "mode": "offline",
                 "cache_root": temp_dir,
                 "input_lat": 47.620908,
                 "input_lon": -122.353508,
@@ -37,7 +36,6 @@ class TestGeoGuessrEnvironmentIntegration:
             assert env.action_parser is not None
 
             # Check configuration values
-            assert env.config.mode == "offline"
             assert env.config.max_steps == 5
             assert env.config.input_lat == 47.620908
             assert env.config.input_lon == -122.353508
@@ -52,7 +50,6 @@ class TestGeoGuessrEnvironmentIntegration:
         """Test environment initialization with geofence configuration."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config = {
-                "mode": "online",
                 "cache_root": temp_dir,
                 "max_steps": 10,
                 "geofence": {
@@ -100,7 +97,6 @@ class TestGeoGuessrEnvironmentIntegration:
             test_image.save(test_image_path)
 
             config = {
-                "mode": "online",
                 "cache_root": temp_dir,
                 "input_lat": 47.620908,
                 "input_lon": -122.353508,
@@ -143,7 +139,6 @@ class TestGeoGuessrEnvironmentIntegration:
         """Test action parsing integration with environment."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config = {
-                "mode": "offline",
                 "cache_root": temp_dir,
                 "input_lat": 47.620908,
                 "input_lon": -122.353508,
@@ -175,7 +170,6 @@ class TestGeoGuessrEnvironmentIntegration:
         """Test geometry utilities integration."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config = {
-                "mode": "offline",
                 "cache_root": temp_dir,
                 "input_lat": 47.620908,
                 "input_lon": -122.353508,
@@ -215,7 +209,6 @@ class TestGeoGuessrEnvironmentIntegration:
         with tempfile.TemporaryDirectory() as temp_dir:
             # Legacy configuration format
             legacy_config = {
-                "mode": "offline",
                 "cache_root": temp_dir,
                 "input_lat": 47.620908,
                 "input_lon": -122.353508,
@@ -239,15 +232,9 @@ class TestGeoGuessrEnvironmentIntegration:
     def test_error_handling(self):
         """Test error handling in various scenarios."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Test invalid configuration
-            with pytest.raises(ValueError, match="Invalid mode"):
-                config = {"mode": "invalid_mode"}
-                env = GeoGuessrEnv(config=config)
-
             # Test missing coordinates
             with pytest.raises(ValueError, match="No starting coordinates"):
                 config = {
-                    "mode": "offline",
                     "cache_root": temp_dir,
                     "max_steps": 5,
                     # Missing input_lat and input_lon
@@ -258,7 +245,6 @@ class TestGeoGuessrEnvironmentIntegration:
             # Test invalid coordinates
             with pytest.raises(ValueError, match="Invalid latitude"):
                 config = {
-                    "mode": "offline",
                     "cache_root": temp_dir,
                     "input_lat": 91.0,  # Invalid latitude
                     "input_lon": -122.353508,

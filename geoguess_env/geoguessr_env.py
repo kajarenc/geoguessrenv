@@ -7,7 +7,6 @@ import gymnasium as gym
 import numpy as np
 import pygame
 from gymnasium import spaces
-from PIL import Image
 
 from .action_parser import ActionParser
 from .asset_manager import AssetManager
@@ -166,7 +165,7 @@ class GeoGuessrEnv(gym.Env):
         super().reset(seed=seed)
 
         # Determine starting coordinates with retry logic for geofence sampling
-        if self.config.geofence and self.config.mode == "online":
+        if self.config.geofence:
             lat, lon = self._sample_valid_coordinates_from_geofence(seed)
         else:
             lat, lon = self.config.input_lat, self.config.input_lon
@@ -180,21 +179,27 @@ class GeoGuessrEnv(gym.Env):
         # Round coordinates to 6 decimal places for consistent cache handling
         lat = round(lat, 6)
         lon = round(lon, 6)
-        offline_mode = self.config.mode == "offline"
         try:
-            self._pano_graph = self.asset_manager.get_or_fetch_panorama_graph(
-                root_lat=lat, root_lon=lon, offline_mode=offline_mode
-            )
+            graph_result = self.asset_manager.prepare_graph(root_lat=lat, root_lon=lon)
         except Exception as e:
             raise ValueError(f"Failed to load panorama data for {lat}, {lon}: {e}")
 
-        if not self._pano_graph:
+        if not graph_result.graph:
             raise ValueError(
                 f"No panorama graph available for coordinates {lat}, {lon}"
             )
 
+        if graph_result.missing_assets:
+            missing = ", ".join(sorted(graph_result.missing_assets))
+            raise ValueError(
+                f"Missing cached assets for panoramas ({missing}) at {lat}, {lon}"
+            )
+
+        # Store prepared graph
+        self._pano_graph = graph_result.graph
+
         # Find root panorama ID (first key in graph)
-        self.pano_root_id = next(iter(self._pano_graph.keys()))
+        self.pano_root_id = graph_result.root_id
 
         root_metadata = self._pano_graph.get(self.pano_root_id, {})
         root_date = root_metadata.get("date")
@@ -204,17 +209,12 @@ class GeoGuessrEnv(gym.Env):
             root_date or "unknown",
         )
 
-        # Preload images for all panoramas in the graph to ensure smooth navigation
-        if not offline_mode:
-            print(f"Prefetching images for {len(self._pano_graph)} panoramas...")
-            pano_ids = set(self._pano_graph.keys())
-            preload_results = self.asset_manager.preload_assets(
-                pano_ids, skip_existing=True
-            )
-            successful_loads = sum(1 for success in preload_results.values() if success)
-            print(
-                f"Successfully prefetched {successful_loads}/{len(pano_ids)} panorama images"
-            )
+        # Verify image availability once to enforce runtime invariant
+        for pano_id in self._pano_graph.keys():
+            if self.asset_manager.get_image_array(pano_id) is None:
+                raise RuntimeError(
+                    f"Panorama image missing from cache for {pano_id} after preparation"
+                )
 
         # Reset episode state
         self._steps = 0
@@ -437,8 +437,8 @@ class GeoGuessrEnv(gym.Env):
 
             # Check if we can find a panorama at this location
             try:
-                pano_id = self.asset_manager._get_or_find_nearest_panorama(
-                    rounded_lat, rounded_lon, offline_mode=False
+                pano_id = self.asset_manager.resolve_nearest_panorama(
+                    rounded_lat, rounded_lon
                 )
                 if pano_id:
                     print(
@@ -475,24 +475,14 @@ class GeoGuessrEnv(gym.Env):
         Get current observation (panorama image).
         """
         if self._current_image is None:
-            # Try to get image from asset manager first
-            asset = self.asset_manager.get_panorama_asset(self.current_pano_id)
-            if asset and asset.image_path.exists():
-                with Image.open(asset.image_path) as img:
-                    img = img.convert("RGB")
-                    self._current_image = np.array(img, dtype=np.uint8)
-            else:
-                # Fallback to direct file access for backward compatibility
-                image_path = self.config.images_dir / f"{self.current_pano_id}.jpg"
-                if image_path.exists():
-                    with Image.open(image_path) as img:
-                        img = img.convert("RGB")
-                        self._current_image = np.array(img, dtype=np.uint8)
-                else:
-                    # Create a placeholder image if none found
-                    self._current_image = np.zeros(
-                        (self._image_height, self._image_width, 3), dtype=np.uint8
-                    )
+            image_array = self.asset_manager.get_image_array(self.current_pano_id)
+            if image_array is None:
+                raise RuntimeError(
+                    f"Missing panorama image for {self.current_pano_id} during observation"
+                )
+
+            # Copy to decouple environment state from the shared cache
+            self._current_image = np.array(image_array, copy=True)
 
         return {"image": self._current_image}
 

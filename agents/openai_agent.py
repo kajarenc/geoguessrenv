@@ -43,55 +43,122 @@ class OpenAIVisionAgent(BaseAgent):
         return None
 
     def act(self, observation, info: Dict[str, Any]) -> Dict[str, Any]:
-        # Prepare inputs
+        context = self._prepare_context(observation, info)
+
+        cached_response = self._get_cached_response(context)
+        if cached_response:
+            return self._parse_action_or_fallback(
+                cached_response,
+                context["links"],
+                image_shape=context["image_shape"],
+            )
+
+        messages, user_text = self._build_messages(context)
+        print("USER TEXT: ", user_text, "\n")
+
+        tools, tool_choice = self._decide_tools(context["force_answer"])
+        response = self._chat_completions(messages, tools, tool_choice)
+        action = self._parse_action_or_fallback(
+            response,
+            context["links"],
+            image_shape=context["image_shape"],
+        )
+        print("ACTION: ", action, "\n")
+
+        self._store_cached_response(context, response)
+
+        return action
+
+    # --- OpenAI call with retries ---
+    def _prepare_context(self, observation, info: Dict[str, Any]) -> Dict[str, Any]:
         links = info.get("links", []) or []
         pose = info.get("pose") or {}
         heading_deg = pose.get("yaw_deg")
         if heading_deg is None:
             heading_deg = pose.get("heading_deg")
+
+        raw_steps = info.get("steps")
+        try:
+            steps_taken = int(raw_steps)
+        except (TypeError, ValueError):
+            steps_taken = 0
+
         meta = {
             "pano_id": info.get("pano_id"),
-            "steps": info.get("steps"),
+            "steps": raw_steps,
             "heading_deg": heading_deg,
             "max_steps": int(self.config.max_nav_steps),
         }
 
-        # Optional caching
-        np_image = (
+        image = (
             observation if hasattr(observation, "shape") else observation.get("image")
         )
-        image_hash = compute_image_hash(np_image)
-        fingerprint = compute_prompt_fingerprint(image_hash, links, meta)
-        cached = (
-            cache_get(self.config.cache_dir, fingerprint)
-            if self.config.cache_dir
-            else None
-        )
-        if cached:
-            action = self._parse_action_or_fallback(cached, links)
-            return action
+        if image is None:
+            raise ValueError(
+                "Observation does not contain an image for OpenAIVisionAgent"
+            )
 
-        # Build messages using VLMBroker prompt, augmented for tool-calling
-        b64_image = encode_image_to_jpeg_base64(np_image, quality=95)
-        force_answer = meta["max_steps"] - meta["steps"] <= 3
+        image_shape = getattr(image, "shape", None)
+
+        fingerprint = None
+        if self.config.cache_dir:
+            image_hash = compute_image_hash(image)
+            fingerprint = compute_prompt_fingerprint(image_hash, links, meta)
+
+        force_answer = meta["max_steps"] - steps_taken <= 3
+
+        return {
+            "image": image,
+            "image_shape": image_shape,
+            "links": links,
+            "meta": meta,
+            "fingerprint": fingerprint,
+            "force_answer": force_answer,
+            "steps_taken": steps_taken,
+        }
+
+    def _get_cached_response(self, context: Dict[str, Any]) -> Dict[str, Any] | None:
+        fingerprint = context.get("fingerprint")
+        if not (self.config.cache_dir and fingerprint):
+            return None
+        return cache_get(self.config.cache_dir, fingerprint)
+
+    def _store_cached_response(
+        self, context: Dict[str, Any], response: Dict[str, Any]
+    ) -> None:
+        fingerprint = context.get("fingerprint")
+        if not (self.config.cache_dir and fingerprint and response):
+            return
+        cache_put(self.config.cache_dir, fingerprint, response)
+
+    def _build_messages(
+        self, context: Dict[str, Any]
+    ) -> tuple[List[Dict[str, Any]], str]:
+        image = context["image"]
+        meta = context["meta"]
+        force_answer = context["force_answer"]
+        steps_taken = context.get("steps_taken", 0)
+
+        b64_image = encode_image_to_jpeg_base64(image, quality=95)
         broker_prompt = self._broker.build_prompt(
-            np_image,
-            {"yaw_deg": meta["heading_deg"]},
+            image,
+            {"yaw_deg": meta.get("heading_deg")},
         )
-        # Align broker prompt with tool-calling API
+
         tool_instructions = (
             "You MUST respond by calling exactly one tool: 'click' or 'answer'. "
             "Never output free-form text or JSON in your message; only call the tool."
         )
         if force_answer:
             tool_instructions += " You MUST call the 'answer' tool now."
+
         system_prompt = "You are assisting with GeoGuessr navigation. Use structured tool calls only."
         user_text = (
-            f"pano_id={meta['pano_id']} steps={meta['steps']}/{meta['max_steps']} heading_deg={meta['heading_deg']}\n\n"
+            f"pano_id={meta['pano_id']} steps={steps_taken}/{meta['max_steps']} heading_deg={meta['heading_deg']}\n\n"
             f"{broker_prompt}\n\n"
             f"{tool_instructions}"
         )
-        print("USER TEXT: ", user_text, "\n")
+
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
             {
@@ -106,27 +173,25 @@ class OpenAIVisionAgent(BaseAgent):
             },
         ]
 
-        # Bind tools based on force_answer
-        self._current_tools = self._tools_schema(force_answer=force_answer)
-        self._current_tool_choice = (
+        return messages, user_text
+
+    def _decide_tools(
+        self, force_answer: bool
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any] | str]:
+        tools = self._tools_schema(force_answer=force_answer)
+        tool_choice: Dict[str, Any] | str = (
             {"type": "function", "function": {"name": "answer"}}
             if force_answer
             else "auto"
         )
+        return tools, tool_choice
 
-        response = self._chat_completions(messages)
-        action = self._parse_action_or_fallback(
-            response, links, image_shape=np_image.shape
-        )
-        print("ACTION: ", action, "\n")
-
-        if self.config.cache_dir:
-            cache_put(self.config.cache_dir, fingerprint, response)
-
-        return action
-
-    # --- OpenAI call with retries ---
-    def _chat_completions(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _chat_completions(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]] | None,
+        tool_choice: Dict[str, Any] | str | None,
+    ) -> Dict[str, Any]:
         # Use tool calling to obtain structured action arguments; temperature from config
         max_attempts = 3
         for attempt in range(max_attempts):
@@ -135,11 +200,8 @@ class OpenAIVisionAgent(BaseAgent):
                     model=self.config.model,
                     messages=messages,
                     temperature=self.config.temperature,
-                    tools=(
-                        getattr(self, "_current_tools", None)
-                        or self._tools_schema(force_answer=False)
-                    ),
-                    tool_choice=getattr(self, "_current_tool_choice", "auto"),
+                    tools=tools or self._tools_schema(force_answer=False),
+                    tool_choice=tool_choice if tool_choice is not None else "auto",
                     timeout=self.config.request_timeout_s,
                 )
                 msg = result.choices[0].message
@@ -158,13 +220,19 @@ class OpenAIVisionAgent(BaseAgent):
                             else fn.get("arguments")
                         )
                         if name == "click" and args is not None:
-                            model = ClickParams.model_validate_json(args)
+                            if isinstance(args, str):
+                                model = ClickParams.model_validate_json(args)
+                            else:
+                                model = ClickParams.model_validate(args)
                             return {
                                 "op": "click",
                                 "click": {"x": model.x, "y": model.y},
                             }
                         if name == "answer" and args is not None:
-                            model = AnswerParams.model_validate_json(args)
+                            if isinstance(args, str):
+                                model = AnswerParams.model_validate_json(args)
+                            else:
+                                model = AnswerParams.model_validate(args)
                             return {
                                 "op": "answer",
                                 "answer": {"lat": model.lat, "lon": model.lon},

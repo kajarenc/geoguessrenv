@@ -47,7 +47,7 @@ class ProviderConfig:
 class RenderConfig:
     """Configuration for environment rendering."""
 
-    render_mode: Optional[str] = None
+    render_mode: Optional[str] = "rgb_array"
     image_width: int = 1024
     image_height: int = 512
     render_fps: int = 4

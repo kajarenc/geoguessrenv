@@ -709,3 +709,31 @@ def test_geofence_invalid_circular_config():
         ValueError, match="Circular geofence requires center with lat/lon"
     ):
         _env = GeoGuessrEnv(config=config)
+
+
+def test_render_returns_numpy_array():
+    """Test that render(mode='rgb_array') returns a numpy array"""
+    config = {
+        "cache_root": "/tmp",
+        "input_lat": 47.620908,
+        "input_lon": -122.353508,
+        "max_steps": 5,
+    }
+
+    env = GeoGuessrEnv(config=config)
+
+    # Set up a mock image state
+    test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
+    env._current_image = test_image
+
+    # Test render with rgb_array mode
+    rendered = env.render(mode="rgb_array")
+
+    # Verify it returns a numpy array
+    assert isinstance(rendered, np.ndarray)
+    assert rendered.dtype == np.uint8
+    assert len(rendered.shape) == 3  # Should be 3D array (height, width, channels)
+    assert rendered.shape[2] == 3  # Should have 3 color channels (RGB)
+    assert np.all(rendered >= 0) and np.all(rendered <= 255)  # Values in valid range
+
+    env.close()

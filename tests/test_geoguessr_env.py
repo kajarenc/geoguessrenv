@@ -19,9 +19,8 @@ def test_config():
         "cache_root": cache_root,
         "input_lat": 47.620908,
         "input_lon": -122.353508,
-        "arrow_hit_radius_px": 24,
         "max_steps": 5,
-        "arrow_min_conf": 0.0,
+        "nav_config": {"arrow_hit_radius_px": 24, "arrow_min_conf": 0.0},
     }
 
 
@@ -34,9 +33,8 @@ def test_config_with_fixtures():
         "cache_root": cache_root,
         "input_lat": 47.620908,
         "input_lon": -122.353508,
-        "arrow_hit_radius_px": 24,
         "max_steps": 5,
-        "arrow_min_conf": 0.0,
+        "nav_config": {"arrow_hit_radius_px": 24, "arrow_min_conf": 0.0},
     }
 
 
@@ -168,8 +166,7 @@ def test_click_within_radius_selects_link():
         "input_lat": 47.620908,
         "input_lon": -122.353508,
         "max_steps": 10,
-        "arrow_hit_radius_px": 24,
-        "arrow_min_conf": 0.0,
+        "nav_config": {"arrow_hit_radius_px": 24, "arrow_min_conf": 0.0},
     }
 
     env = GeoGuessrEnv(config=config)
@@ -230,8 +227,7 @@ def test_click_outside_radius_no_op():
         "input_lat": 47.620908,
         "input_lon": -122.353508,
         "max_steps": 10,
-        "arrow_hit_radius_px": 24,
-        "arrow_min_conf": 0.0,
+        "nav_config": {"arrow_hit_radius_px": 24, "arrow_min_conf": 0.0},
     }
 
     env = GeoGuessrEnv(config=config)
@@ -371,7 +367,7 @@ def test_arrow_click_mapping_with_known_coordinates():
         "input_lat": 47.620908,
         "input_lon": -122.353508,
         "max_steps": 10,
-        "arrow_hit_radius_px": 24,
+        "nav_config": {"arrow_hit_radius_px": 24},
     }
 
     env = GeoGuessrEnv(config=config)

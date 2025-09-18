@@ -52,14 +52,24 @@ def main() -> None:
     project_root = os.path.dirname(script_dir)
     cache_root = args.cache_root or os.path.join(project_root, "cache")
 
+    render_config = {
+        "image_width": args.image_width,
+        "image_height": args.image_height,
+    }
+    if args.render:
+        render_config["render_mode"] = "human"
+
+    env_config = {
+        "cache_root": cache_root,
+        "input_lat": args.input_lat,
+        "input_lon": args.input_lon,
+        "render_config": render_config,
+    }
+
     env = gym.make(
         ENV_ID,
         render_mode="human" if args.render else None,
-        config={
-            "cache_root": cache_root,
-            "input_lat": args.input_lat,
-            "input_lon": args.input_lon,
-        },
+        config=env_config,
     )
 
     agent_cfg = AgentConfig(

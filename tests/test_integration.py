@@ -204,8 +204,8 @@ class TestGeoGuessrEnvironmentIntegration:
 
             env.close()
 
-    def test_configuration_backward_compatibility(self):
-        """Test that legacy configuration parameters still work."""
+    def test_configuration_rejects_legacy_parameters(self):
+        """Legacy configuration parameters should be rejected."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Legacy configuration format
             legacy_config = {
@@ -218,16 +218,8 @@ class TestGeoGuessrEnvironmentIntegration:
                 "arrow_min_conf": 0.8,
                 "render_mode": "rgb_array",
             }
-
-            env = GeoGuessrEnv(config=legacy_config)
-
-            # Verify legacy parameters are mapped correctly
-            assert env.config.provider_config.provider == "google_streetview"
-            assert env.config.nav_config.arrow_hit_radius_px == 32
-            assert env.config.nav_config.arrow_min_conf == 0.8
-            assert env.config.render_config.render_mode == "rgb_array"
-
-            env.close()
+            with pytest.raises(ValueError, match="legacy parameters"):
+                GeoGuessrEnv(config=legacy_config)
 
     def test_error_handling(self):
         """Test error handling in various scenarios."""

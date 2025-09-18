@@ -57,7 +57,6 @@ The codebase follows standard Gymnasium conventions:
 - `gymnasium_env/envs/` - Environment implementations
   - `geoguessr_world.py` - GeoGuessr-style environment (in development)
   - `grid_world.py` - Simple grid world example
-  - `helpers.py` - Utility functions
 - `gymnasium_env/wrappers/` - Wrapper implementations
 - `agents/` - Agent implementations including OpenAI-powered agent
 - `tests/` - Test suite

@@ -32,7 +32,7 @@ def main() -> None:
         ENV_ID,
         render_mode="human",
         config={
-            "provider": "gsv",
+            "provider_config": {"provider": "gsv"},
             "cache_root": cache_root,
             "input_lat": input_lat,
             "input_lon": input_lon,

@@ -31,8 +31,6 @@ def cache_test_data():
         "input_lat": test_lat,
         "input_lon": test_lon,
         "max_steps": 5,
-        "arrow_hit_radius_px": 24,
-        "arrow_min_conf": 0.0,
     }
 
     try:

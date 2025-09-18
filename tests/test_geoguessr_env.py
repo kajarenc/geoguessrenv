@@ -549,6 +549,91 @@ def test_geofence_sampling_in_reset():
                 assert distance_km <= 1.0  # Within the geofence radius
 
 
+def test_reset_seed_determinism(tmp_path):
+    """Episodes with identical reset seeds should replay the same pano and pose."""
+    geofence = {
+        "type": "circle",
+        "center": {"lat": 47.620908, "lon": -122.353508},
+        "radius_km": 5.0,
+    }
+
+    config = {
+        "cache_root": str(tmp_path),
+        "geofence": geofence,
+        "max_steps": 3,
+    }
+
+    env = GeoGuessrEnv(config=config)
+
+    center_lat = geofence["center"]["lat"]
+    center_lon = geofence["center"]["lon"]
+
+    def deterministic_geofence_sample(seed_value):
+        base_seed = seed_value or 0
+        offset = (base_seed % 1000) * 1e-4
+        return center_lat + offset, center_lon - offset
+
+    # Override the sampler so seeds map to predictable coordinates for the test
+    env._sample_from_geofence = deterministic_geofence_sample
+
+    test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
+    heading_cache = {}
+
+    def fake_resolve(lat, lon):
+        return f"pano_{lat:.6f}_{lon:.6f}"
+
+    def fake_prepare(root_lat, root_lon):
+        pano_id = fake_resolve(root_lat, root_lon)
+        if pano_id not in heading_cache:
+            heading_cache[pano_id] = float(len(heading_cache) * 45.0)
+        graph = {
+            pano_id: {
+                "lat": root_lat,
+                "lon": root_lon,
+                "heading": heading_cache[pano_id],
+                "links": [],
+            }
+        }
+        return PanoramaGraphResult(
+            root_id=pano_id,
+            graph=graph,
+            missing_assets=set(),
+        )
+
+    try:
+        with patch.object(
+            env.asset_manager,
+            "resolve_nearest_panorama",
+            side_effect=fake_resolve,
+        ):
+            with patch.object(
+                env.asset_manager,
+                "prepare_graph",
+                side_effect=fake_prepare,
+            ):
+                with patch.object(
+                    env.asset_manager,
+                    "get_image_array",
+                    side_effect=lambda pano_id: test_image,
+                ):
+                    obs1, info1 = env.reset(seed=123)
+                    obs2, info2 = env.reset(seed=123)
+                    obs3, info3 = env.reset(seed=321)
+    finally:
+        env.close()
+
+    assert np.array_equal(obs1["image"], obs2["image"])
+    assert info1["pano_id"] == info2["pano_id"]
+    assert math.isclose(info1["gt_lat"], info2["gt_lat"])
+    assert math.isclose(info1["gt_lon"], info2["gt_lon"])
+    assert math.isclose(info1["pose"]["yaw_deg"], info2["pose"]["yaw_deg"])
+
+    assert info3["pano_id"] != info1["pano_id"]
+    assert not math.isclose(info3["gt_lat"], info1["gt_lat"])
+    assert not math.isclose(info3["gt_lon"], info1["gt_lon"])
+    assert not math.isclose(info3["pose"]["yaw_deg"], info1["pose"]["yaw_deg"])
+
+
 def test_geofence_sampling_with_fallback():
     """Test that environment falls back to input coordinates when geofence not available"""
     input_lat, input_lon = 40.7128, -74.0060  # NYC coordinates

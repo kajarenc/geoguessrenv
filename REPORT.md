@@ -10,7 +10,7 @@ For data loading, I use:
 - [robolyst/streetview](https://github.com/robolyst/streetview) (for getting info about the nearest panorama and downloading panorama images)
 - [sk-zk/streetlevel](https://github.com/sk-zk/streetlevel) (for getting metadata about panoramas and links to other panoramas)
 
-Now, `GeoGuessrEnv` receives `input_lat` and `input_lon` (done for debugging purposes) as well as geofence.
+Now, `GeoGuessrEnv` optionally receives `input_lat` and `input_lon` (done for debugging purposes) as well as geofence.
 First, I use `streetview` to find the closest panorama and cache the mapping between the coordinates and the panorama ID. 
 Next, I use `streetlevel` to retrieve metadata for that panorama, including links to adjacent ones. 
 I then initiate a breadth-first search (BFS) to download and cache metadata for a fixed number of panoramas; that number should be configurable in the future.
@@ -19,10 +19,10 @@ Finally, I use `streetview` again to get the panorama images.
 An important note is that both `streetview` and `streetlevel` do not use the Google Street View API to get data;
 instead, they make calls to the Google Maps website, which could be blocked by Google if used excessively.
 
-After the data is loaded in `reset`, we build a graph of panoramas that are connected to each other and start an episode.
+After the data is loaded in `reset`, we build a graph of panoramas that are connected and start an episode.
 
 Currently, the env pulls data only from the Google street view, but [sk-zk/streetlevel](https://github.com/sk-zk/streetlevel?tab=readme-ov-file#functionality-overview) 
-allows pulling data from other providers, like Yandex Panorama or Bing Streetside.
+allows pulling data from other providers, like Bing Streetside or Yandex Panorama.
 
 
 ### Things to improve

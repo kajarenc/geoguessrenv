@@ -53,14 +53,22 @@ uv run pytest tests/ -v
 
 The codebase follows standard Gymnasium conventions:
 
-- `gymnasium_env/` - Main package directory
-- `gymnasium_env/envs/` - Environment implementations
-  - `geoguessr_world.py` - GeoGuessr-style environment (in development)
-  - `grid_world.py` - Simple grid world example
-- `gymnasium_env/wrappers/` - Wrapper implementations
+- `geoguess_env/` - Main package directory (Note: actual dir is `geoguess_env` not `gymnasium_env`)
+  - `geoguessr_env.py` - Main environment implementation
+  - `config.py` - Configuration dataclasses with validation
+  - `action_parser.py` - Action parsing and validation logic
+  - `asset_manager.py` - Manages caching and loading of panorama assets
+  - `geometry_utils.py` - Geographic and geometric calculations
+  - `providers/` - Street view data provider implementations
+    - `base.py` - Abstract base provider class
+    - `google_streetview.py` - Google Street View API integration
 - `agents/` - Agent implementations including OpenAI-powered agent
-- `tests/` - Test suite
-- `scripts/` - Utility scripts
+  - `openai_agent.py` - Vision-based navigation agent
+  - `base.py` - Base agent interface
+- `tests/` - Comprehensive test suite
+- `scripts/` - Utility and demo scripts
+  - `run_openai_agent.py` - OpenAI agent runner
+  - `cache_test_data.py` - Test data caching utility
 
 ## Dependencies
 
@@ -133,3 +141,157 @@ This is an active development project working toward implementing:
 - Comprehensive test coverage
 
 Reference `TaskDescription.md` for the complete specification and end goals.
+
+## Key Implementation Details
+
+### Configuration System
+The project uses a structured configuration system based on dataclasses (`config.py`):
+- `GeoGuessrConfig` - Main configuration with validation
+- `GeofenceConfig` - Geographic boundary constraints
+- `ProviderConfig` - Data provider settings
+- `RenderConfig` - Rendering parameters
+- `NavigationConfig` - Navigation behavior settings
+
+### Caching Strategy
+- Street view panoramas are cached locally in `cache/` directory
+- Cache structure:
+  - `cache/images/` - Panorama images stored as `{panorama_id}.jpg`
+  - `cache/metadata/` - Metadata stored as `{root_panorama_id}_mini.jsonl` files
+  - `cache/replays/` - Episode replay data
+- Each metadata file contains panorama info and navigation links for connected panoramas
+- Images are stored flat without provider subdirectories (simplifies access across providers)
+- Caching reduces API calls and improves test reliability
+
+### Provider Architecture
+- Abstract `PanoramaProvider` base class defines the interface
+- Google Street View provider implemented with rate limiting
+- Providers handle fetching, caching, and metadata management
+- Easy to extend with new providers (e.g., Mapillary, Bing)
+
+### Action Space Design
+Actions are dictionary-based with operation types:
+- Click actions include pixel coordinates and confidence scores
+- Answer actions provide latitude/longitude guesses
+- Action parser validates and normalizes all inputs
+
+## Testing Strategy
+
+### Test Organization
+- `tests/conftest.py` - Shared fixtures and test utilities
+- `tests/test_fixtures.py` - Reusable test data and assertions
+- `tests/fixtures/` - Static test data (panorama samples, etc.)
+- Unit tests for each major component
+- Integration tests for end-to-end workflows
+
+### Running Tests
+```bash
+# Run all tests with verbose output
+uv run pytest tests/ -v
+
+# Run specific test file
+uv run pytest tests/test_geoguessr_env.py -v
+
+```
+
+## CI/CD Pipeline
+
+### GitHub Actions Workflow
+Located in `.github/workflows/python-package.yml`:
+- Runs on push to main and pull requests
+- Tests against Python 3.10, 3.11, and 3.12
+- Environment secrets required:
+  - `GOOGLE_MAPS_API_KEY` - For Street View API access
+  - `OPENAI_API_KEY` - For OpenAI agent testing
+- Workflow steps:
+  1. Linting with Ruff
+  2. Format checking with Ruff
+  3. Full test suite with pytest
+
+### Pre-commit Hooks
+Configured in `.pre-commit-config.yaml`:
+- Automatically runs Ruff linting and formatting
+- Ensures code quality before commits
+- Install with: `pre-commit install`
+
+## Development Workflow
+
+### Setting Up Development Environment
+```bash
+# Create and activate virtual environment
+uv venv
+source .venv/bin/activate
+
+# Install in editable mode with all dependencies
+uv pip install -e .
+
+# Install pre-commit hooks
+pre-commit install
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env to add your API keys
+```
+
+### Common Development Tasks
+```bash
+# Format code
+uv run ruff format .
+
+# Lint code
+uv run ruff check . --fix
+
+# Run specific test
+uv run pytest tests/test_geoguessr_env.py::test_click_action -v
+
+```
+
+### Debugging Tips
+- Enable verbose logging: Set environment variable `DEBUG=1`
+- Visualize episodes: Use `--render` flag with demo scripts
+- Check cache integrity: Examine `cache/` directory structure
+- API debugging: Monitor rate limits and response codes
+
+## API Keys and Environment Variables
+
+### Required API Keys
+- **GOOGLE_MAPS_API_KEY**: Required for Google Street View access
+  - Obtain from: [Google Cloud Console](https://console.cloud.google.com/)
+  - Enable: Street View Static API
+- **OPENAI_API_KEY**: Required for OpenAI agent functionality
+  - Obtain from: [OpenAI Platform](https://platform.openai.com/)
+
+### Environment File Structure
+Create `.env` file in project root:
+```bash
+GOOGLE_MAPS_API_KEY=your_google_maps_key_here
+OPENAI_API_KEY=your_openai_key_here
+```
+
+## Known Issues and Limitations
+
+### Current Limitations
+- Only Google Street View provider fully implemented
+- Limited to static panorama images (no dynamic/video support)
+- Action space currently uses pixel coordinates (not normalized)
+- No multi-agent support yet
+
+### Common Issues
+- **Rate Limiting**: Google API has quotas; implement backoff strategies
+- **Cache Size**: Can grow large; periodic cleanup may be needed
+- **Test Flakiness**: Network-dependent tests may fail; use cached fixtures
+- **Memory Usage**: Large panorama images can consume significant RAM
+
+## Future Development Roadmap
+
+### Planned Features
+- Additional providers (Mapillary, Bing Street Side)
+- Normalized action space (0-1 coordinates)
+- Episode recording and replay system
+- Performance benchmarking suite
+- Web-based visualization dashboard
+
+### Extension Points
+- New agent architectures in `agents/`
+- Additional wrappers for observation/action transformations
+- Provider-specific optimizations
+- Enhanced caching strategies

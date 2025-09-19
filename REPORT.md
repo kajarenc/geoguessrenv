@@ -48,3 +48,8 @@ allows pulling data from other providers, like Bing Streetside or Yandex Panoram
  - Implement session reply functionality and result writing.
  - Write a base agent and rewrite the OpenAI agent.
  - Make asset loading more robust; handle errors when an image is malformed, when there are no links in the image, etc.
+
+> Note that the above list is not exhaustive. It would be great to 
+> have a conversation with potential users of this environment to get feedback and guidance on 
+> future improvements - particularly regarding offline mode logic, offline/online result writing, 
+> required wrappers, link positioning, and similar aspects.

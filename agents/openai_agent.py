@@ -38,20 +38,33 @@ class OpenAIVisionAgent(BaseAgent):
         self._client = OpenAI(api_key=api_key) if api_key else OpenAI()
         # Broker for standardized prompt and parsing
         self._broker = VLMBroker()
+        # Episodic memory to give the model navigation context
+        self._history: List[Dict[str, Any]] = []
+        self._history_limit = 8
+        self._last_seen_steps: int | None = None
 
     def reset(self) -> None:
+        self._history.clear()
+        self._last_seen_steps = None
         return None
 
     def act(self, observation, info: Dict[str, Any]) -> Dict[str, Any]:
         context = self._prepare_context(observation, info)
 
+        steps_taken = int(context.get("steps_taken", 0) or 0)
+        if self._last_seen_steps is not None and steps_taken < self._last_seen_steps:
+            self._history.clear()
+        self._last_seen_steps = steps_taken
+
         cached_response = self._get_cached_response(context)
         if cached_response:
-            return self._parse_action_or_fallback(
+            action = self._parse_action_or_fallback(
                 cached_response,
                 context["links"],
                 image_shape=context["image_shape"],
             )
+            self._remember_step(context, action)
+            return action
 
         messages, user_text = self._build_messages(context)
         print("USER TEXT: ", user_text, "\n")
@@ -66,6 +79,7 @@ class OpenAIVisionAgent(BaseAgent):
         print("ACTION: ", action, "\n")
 
         self._store_cached_response(context, response)
+        self._remember_step(context, action)
 
         return action
 
@@ -152,12 +166,25 @@ class OpenAIVisionAgent(BaseAgent):
         if force_answer:
             tool_instructions += " You MUST call the 'answer' tool now."
 
-        system_prompt = "You are assisting with GeoGuessr navigation. Use structured tool calls only."
-        user_text = (
-            f"pano_id={meta['pano_id']} steps={steps_taken}/{meta['max_steps']} heading_deg={meta['heading_deg']}\n\n"
-            f"{broker_prompt}\n\n"
-            f"{tool_instructions}"
+        history_summary = self._format_history_summary()
+        heading_text = self._format_heading(meta.get("heading_deg"))
+        pano_id = meta.get("pano_id") or "unknown"
+        links_available = len(context.get("links") or [])
+
+        status_line = (
+            f"Current panorama: pano_id={pano_id} | steps taken: {steps_taken}/{meta['max_steps']} "
+            f"| heading: {heading_text} | available links: {links_available}"
         )
+
+        user_sections: List[str] = [status_line]
+        if history_summary:
+            user_sections.append(f"Previous steps:\n{history_summary}")
+        user_sections.append(broker_prompt)
+        user_sections.append(tool_instructions)
+
+        user_text = "\n\n".join(user_sections)
+
+        system_prompt = "You are assisting with GeoGuessr navigation. Use structured tool calls only."
 
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
@@ -174,6 +201,107 @@ class OpenAIVisionAgent(BaseAgent):
         ]
 
         return messages, user_text
+
+    def _remember_step(self, context: Dict[str, Any], action: Dict[str, Any]) -> None:
+        step_value = context.get("steps_taken", 0)
+        try:
+            step_index = int(step_value)
+        except (TypeError, ValueError):
+            step_index = 0
+
+        meta = context.get("meta", {})
+        entry: Dict[str, Any] = {
+            "step": step_index,
+            "pano_id": meta.get("pano_id"),
+            "heading_deg": meta.get("heading_deg"),
+            "links_count": len(context.get("links") or []),
+            "action": action.get("op"),
+        }
+
+        if context.get("force_answer"):
+            entry["force_answer"] = True
+
+        op = action.get("op")
+        value = action.get("value")
+
+        if op == "click" and isinstance(value, (list, tuple)) and len(value) >= 2:
+            try:
+                x = int(value[0])
+                y = int(value[1])
+            except (TypeError, ValueError):
+                x = y = None
+            if x is not None and y is not None:
+                entry["click"] = {"x": x, "y": y}
+        elif op == "answer" and isinstance(value, (list, tuple)) and len(value) >= 2:
+            try:
+                lat = float(value[0])
+                lon = float(value[1])
+            except (TypeError, ValueError):
+                lat = lon = None
+            if lat is not None and lon is not None:
+                entry["guess"] = {"lat": lat, "lon": lon}
+
+        self._history.append(entry)
+        if len(self._history) > self._history_limit:
+            del self._history[: -self._history_limit]
+        self._last_seen_steps = step_index
+
+    def _format_history_summary(self) -> str:
+        if not self._history:
+            return ""
+
+        lines: List[str] = []
+        for entry in self._history[-self._history_limit :]:
+            step = entry.get("step")
+            step_label = f"Step {step}" if step is not None else "Previous"
+            pano_id = entry.get("pano_id") or "unknown"
+            heading = self._format_heading(entry.get("heading_deg"))
+            links_count = entry.get("links_count")
+
+            parts = [f"{step_label}: pano={pano_id}", f"heading: {heading}"]
+            if isinstance(links_count, int):
+                parts.append(f"links: {links_count}")
+
+            action = entry.get("action")
+            if action == "click":
+                click = entry.get("click") or {}
+                if click:
+                    cx = click.get("x")
+                    cy = click.get("y")
+                    if cx is not None and cy is not None:
+                        parts.append(f"action: click screen=({cx},{cy})")
+                    else:
+                        parts.append("action: click")
+                else:
+                    parts.append("action: click")
+            elif action == "answer":
+                guess = entry.get("guess") or {}
+                lat = guess.get("lat")
+                lon = guess.get("lon")
+                parts.append(
+                    "action: answer "
+                    f"lat≈{self._format_coord(lat)} lon≈{self._format_coord(lon)}"
+                )
+            elif action:
+                parts.append(f"action: {action}")
+
+            lines.append(" | ".join(parts))
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_heading(value: Any) -> str:
+        try:
+            return f"{float(value):.1f}°"
+        except (TypeError, ValueError):
+            return "unknown"
+
+    @staticmethod
+    def _format_coord(value: Any) -> str:
+        try:
+            return f"{float(value):.6f}"
+        except (TypeError, ValueError):
+            return "?"
 
     def _decide_tools(
         self, force_answer: bool

@@ -179,3 +179,7 @@ cache/metadata/nearest_pano_cache.json
 # macOS
 .DS_Store
 **/.DS_Store
+
+results_offline.csv
+results_online.csv
+test_results.csv

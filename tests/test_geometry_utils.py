@@ -81,12 +81,15 @@ class TestGeometryUtils:
         """Test direction to screen x-coordinate conversion."""
         width = geometry_test_data.IMAGE_WIDTH
 
+        # With fixed formula: x = ((direction - heading) % 2π) / 2π * width
+        # x=0 shows panorama heading direction
         test_cases = [
-            (0, 0, 0),  # North direction, no pano heading
-            (math.pi / 2, 0, width // 4),  # East direction
-            (math.pi, 0, width // 2),  # South direction
-            (3 * math.pi / 2, 0, 3 * width // 4),  # West direction
-            (0, math.pi / 2, width // 4),  # North with 90° pano heading
+            (0, 0, 0),  # North direction, no pano heading -> x=0
+            (math.pi / 2, 0, width // 4),  # East direction -> x=256
+            (math.pi, 0, width // 2),  # South direction -> x=512
+            (3 * math.pi / 2, 0, 3 * width // 4),  # West direction -> x=768
+            (math.pi / 2, math.pi / 2, 0),  # East with East heading -> x=0
+            (0, math.pi / 2, 3 * width // 4),  # North with East heading -> x=768
         ]
 
         for direction, pano_heading, expected_x in test_cases:

@@ -87,7 +87,7 @@ class GeometryUtils:
         Convert direction to x-coordinate in equirectangular image.
 
         Args:
-            direction_rad: Link direction in radians
+            direction_rad: Link direction in radians (absolute compass bearing)
             pano_heading_rad: Panorama heading in radians
             image_width: Width of the image in pixels
 
@@ -96,13 +96,15 @@ class GeometryUtils:
         """
         tau = 2 * math.pi
 
-        # Combined direction relative to image coordinate system
-        combined_direction = GeometryUtils.normalize_angle(
-            direction_rad + pano_heading_rad
+        # Calculate relative direction from panorama heading
+        # x=0 corresponds to panorama heading direction
+        # x=width/2 corresponds to opposite direction (heading + 180°)
+        relative_direction = GeometryUtils.normalize_angle(
+            direction_rad - pano_heading_rad
         )
 
         # Convert to x-coordinate
-        x_float = (combined_direction / tau) * image_width
+        x_float = (relative_direction / tau) * image_width
         x = int(round(x_float))
 
         # Clamp to valid range

@@ -82,6 +82,7 @@ def main() -> None:
     )
     agent = OpenAIVisionAgent(agent_cfg)
 
+    agent.reset()
     obs, info = env.reset()
 
     steps = 0

@@ -26,8 +26,8 @@ allows pulling data from other providers, like Bing Streetside or Yandex Panoram
 
 
 ### Things to improve
-- **Revisit the logic for placing links on the image**.  
-  The relative positions of links from the metadata correspond to ground truth, but I'm not sure if I'm using the right heading to place each link. As an alternative, I could ignore directions from the metadata and compute the correct positions based on the panorama heading and coordinates.
+- ~~**Revisit the logic for placing links on the image**.~~ DONE :tada:  
+  ~~The relative positions of links from the metadata correspond to ground truth, but I'm not sure if I'm using the right heading to place each link. As an alternative, I could ignore directions from the metadata and compute the correct positions based on the panorama heading and coordinates.~~
 - Revisit the click-handling logic.  
   Currently, it prioritizes absolute distance on the image, which is not correct for equirectangular images and does not align with the task description.
 - Abstract the caching logic into a cache manager, with the ability to store data not only in the local filesystem

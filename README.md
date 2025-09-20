@@ -1,4 +1,4 @@
-# Gymnasium Env + GeoGuessr-like Environment
+#  Gymnasium GeoGuessr-like Environment
 
 This repo contains a custom Gymnasium GeoGuessr-like panorama navigation environment, base agent and an OpenAI-powered agent.
 

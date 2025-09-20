@@ -581,7 +581,7 @@ def test_reset_seed_determinism(tmp_path):
     def fake_prepare(root_lat, root_lon):
         pano_id = fake_resolve(root_lat, root_lon)
         if pano_id not in heading_cache:
-            heading_cache[pano_id] = float(len(heading_cache) * 45.0)
+            heading_cache[pano_id] = float(math.radians(len(heading_cache) * 45.0))
         graph = {
             pano_id: {
                 "lat": root_lat,

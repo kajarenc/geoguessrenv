@@ -118,8 +118,8 @@ class TestGeometryUtils:
 
         screen_links = GeometryUtils.compute_link_screen_positions(
             links=links,
-            pano_heading=0.0,
-            current_heading=0.0,
+            pano_heading_rad=0.0,
+            current_heading_rad=0.0,
             image_width=geometry_test_data.IMAGE_WIDTH,
             image_height=geometry_test_data.IMAGE_HEIGHT,
         )

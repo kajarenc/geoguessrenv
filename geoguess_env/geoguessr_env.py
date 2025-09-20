@@ -223,9 +223,7 @@ class GeoGuessrEnv(gym.Env):
         # Initialize camera heading
         node = self._pano_graph.get(self.current_pano_id, {})
         heading = node.get("heading", 0.0)
-        self._heading_rad = (
-            math.radians(heading) if isinstance(heading, (int, float)) else 0.0
-        )
+        self._heading_rad = float(heading) if isinstance(heading, (int, float)) else 0.0
 
         # Get initial observation and info
         obs = self._get_observation()
@@ -493,7 +491,7 @@ class GeoGuessrEnv(gym.Env):
         """
         node = self._pano_graph.get(self.current_pano_id, {})
         pano_heading = node.get("heading", 0.0)
-        current_heading_deg = math.degrees(self._heading_rad)
+        current_heading_rad = self._heading_rad
         # Normalize link directions: metadata stores radians; pass through as radians.
         normalized_links: List[Dict[str, object]] = []
         for link in self.current_links or []:
@@ -513,8 +511,10 @@ class GeoGuessrEnv(gym.Env):
 
         return GeometryUtils.compute_link_screen_positions(
             links=normalized_links,
-            pano_heading=pano_heading,
-            current_heading=current_heading_deg,
+            pano_heading_rad=float(pano_heading)
+            if isinstance(pano_heading, (int, float))
+            else 0.0,
+            current_heading_rad=current_heading_rad,
             image_width=self._image_width,
             image_height=self._image_height,
         )
@@ -550,8 +550,8 @@ class GeoGuessrEnv(gym.Env):
 
         # Move to neighbor pano
         self._set_current_pano(next_id)
-        # Update camera heading to new pano's heading (degrees -> radians)
+        # Update camera heading to the new pano's stored heading (already radians)
         node = self._pano_graph.get(self.current_pano_id, {})
         heading = node.get("heading")
         if isinstance(heading, (int, float)):
-            self._heading_rad = math.radians(float(heading))
+            self._heading_rad = float(heading)

@@ -113,8 +113,8 @@ class GeometryUtils:
     @staticmethod
     def compute_link_screen_positions(
         links: List[Dict],
-        pano_heading: float,
-        current_heading: float,
+        pano_heading_rad: float,
+        current_heading_rad: float,
         image_width: int,
         image_height: int,
     ) -> List[Dict]:
@@ -123,18 +123,14 @@ class GeometryUtils:
 
         Args:
             links: List of link dictionaries with 'id' and 'direction' keys
-            pano_heading: Panorama heading in degrees
-            current_heading: Current camera heading in degrees
+            pano_heading_rad: Panorama heading in radians
+            current_heading_rad: Current camera heading in radians
             image_width: Image width in pixels
             image_height: Image height in pixels
 
         Returns:
             List of link dictionaries with added screen position info
         """
-        # Convert headings to radians; link directions are already in radians
-        pano_heading_rad = math.radians(pano_heading)
-        current_heading_rad = math.radians(current_heading)
-
         screen_links = []
         for link in links:
             # Expect direction to be in radians from metadata
@@ -150,13 +146,11 @@ class GeometryUtils:
             y = image_height // 2
 
             # Calculate absolute heading for this link
-            abs_heading = GeometryUtils.normalize_angle(
-                direction_rad + pano_heading_rad
-            )
+            abs_heading = GeometryUtils.normalize_angle(direction_rad)
 
             # Calculate relative heading difference from current view
             rel_heading_diff = GeometryUtils.angle_difference(
-                abs_heading, current_heading_rad
+                direction_rad, current_heading_rad
             )
 
             screen_link = {

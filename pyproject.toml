@@ -8,7 +8,7 @@ packages = ["geoguess_env"]
 [project]
 name = "geoguess_env"
 version = "0.0.1"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
   "gymnasium >= 1.2.0",
   "numpy>=1.24.0",

@@ -3,7 +3,7 @@
 `GeoGuessrEnv` (`geoguess_env/geoguessr_env.py`) is the primary artifact in this repository. Every shipped agent exists to exercise that environment, verify its APIs, and offer reproducible entry points for research or demos. This guide captures the environment touchpoints, the project tooling expected for agent work, the reference agents already implemented, and practical advice for extending the system.
 
 ## Environment & Tooling Baseline
-- **Runtime**: Python 3.11+ (see `pyproject.toml`).
+- **Runtime**: Python 3.10+ (see `pyproject.toml`).
 - **Dependency manager**: [`uv`](https://github.com/astral-sh/uv) only. Install the project with `uv pip install -e .` inside the repository root.
 - **Formatting & linting**: Ruff (`uv run ruff check . --fix`, `uv run ruff format .`).
 - **Testing**: pytest (`uv run pytest -v`). Add targeted tests under `tests/` for any new agent behaviors.

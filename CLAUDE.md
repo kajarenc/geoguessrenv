@@ -72,7 +72,7 @@ The codebase follows standard Gymnasium conventions:
 
 ## Dependencies
 
-- Python >= 3.11 (as specified in pyproject.toml)
+- Python >= 3.10 (as specified in pyproject.toml)
 - gymnasium >= 1.2.0 (core RL framework)
 - numpy >= 1.24.0 (numerical computing)
 - requests >= 2.32.5 (HTTP client for API calls)
@@ -103,7 +103,7 @@ The current demo shows:
 ## User Preferences & Code Style
 
 ### Python Development Standards
-- **Supported Python versions**: 3.11+ (as specified in pyproject.toml)
+- **Supported Python versions**: 3.10+ (as specified in pyproject.toml)
 - **Linter & Formatter**: Ruff 0.x (enforces PEP 8 compliance)
 - **Testing Framework**: pytest 8.x
 - **Dependency Management**: Use `uv` exclusively for dependency installation, synchronization, and locking. Never use `pip`, `pip-tools`, or `poetry` directly.

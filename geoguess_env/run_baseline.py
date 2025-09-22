@@ -197,7 +197,7 @@ def save_results_csv(results: List[Dict], output_path: str) -> None:
     print(f"Results saved to {output_path}")
 
 
-def main() -> None:
+def main() -> int:
     """Main entry point."""
     args = parse_args()
     logging.basicConfig(level=logging.INFO)

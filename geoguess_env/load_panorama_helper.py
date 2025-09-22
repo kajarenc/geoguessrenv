@@ -1,13 +1,28 @@
-from PIL import Image
+import logging
+
+from PIL import Image, UnidentifiedImageError
 from streetview import crop_bottom_and_right_black_border, get_panorama
+
+logger = logging.getLogger(__name__)
 
 
 def load_single_panorama(pano_id: str, image_path: str, zoom: int = 4):
-    image = get_panorama(
-        pano_id=pano_id,
-        multi_threaded=True,
-        zoom=zoom,
-    )
+    try:
+        image = get_panorama(
+            pano_id=pano_id,
+            multi_threaded=True,
+            zoom=zoom,
+        )
+    except UnidentifiedImageError as e:
+        logger.error(
+            "Failed to download panorama %s: received non-image content (ID may be invalid or deprecated)",
+            pano_id,
+        )
+        raise ValueError(f"Cannot download image for panorama {pano_id}: {e}")
+    except Exception as e:
+        logger.error("Failed to download panorama %s: %s", pano_id, e)
+        raise
+
     image = crop_bottom_and_right_black_border(image)
     original_width, original_height = image.size
     target_width = 1024

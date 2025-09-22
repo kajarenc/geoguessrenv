@@ -8,7 +8,7 @@ import pygame
 from gymnasium import spaces
 
 from .action_parser import ActionParser
-from .asset_manager import AssetManager
+from .asset_manager import AssetManager, RootPanoramaUnavailableError
 from .config import GeoGuessrConfig
 from .geometry_utils import GeometryUtils
 from .providers.google_streetview import GoogleStreetViewProvider
@@ -168,35 +168,75 @@ class GeoGuessrEnv(gym.Env):
         self._episode_seed = self.np_random_seed
         self._episode_rng = self.np_random
 
-        # Determine starting coordinates with retry logic for geofence sampling
-        if self.config.geofence:
-            lat, lon = self._sample_valid_coordinates_from_geofence()
-        else:
-            lat, lon = self.config.input_lat, self.config.input_lon
+        # Retry logic for finding valid panorama location
+        max_location_attempts = 5
+        graph_result = None
 
-        if lat is None or lon is None:
+        for location_attempt in range(max_location_attempts):
+            # Determine starting coordinates with retry logic for geofence sampling
+            if self.config.geofence:
+                lat, lon = self._sample_valid_coordinates_from_geofence()
+            else:
+                # For non-geofence mode, only try once
+                if location_attempt > 0:
+                    raise ValueError(
+                        f"Failed to load panorama data for {self.config.input_lat}, {self.config.input_lon}: "
+                        "Root panorama unavailable and no geofence configured for retry"
+                    )
+                lat, lon = self.config.input_lat, self.config.input_lon
+
+            if lat is None or lon is None:
+                raise ValueError(
+                    "No starting coordinates provided (either input_lat/lon or geofence required)"
+                )
+
+            # Get or fetch panorama graph using asset manager
+            # Round coordinates to 6 decimal places for consistent cache handling
+            lat = round(lat, 6)
+            lon = round(lon, 6)
+
+            try:
+                graph_result = self.asset_manager.prepare_graph(
+                    root_lat=lat, root_lon=lon
+                )
+
+                if not graph_result.graph:
+                    raise ValueError(
+                        f"No panorama graph available for coordinates {lat}, {lon}"
+                    )
+
+                if graph_result.missing_assets:
+                    missing = ", ".join(sorted(graph_result.missing_assets))
+                    raise ValueError(
+                        f"Missing cached assets for panoramas ({missing}) at {lat}, {lon}"
+                    )
+
+                # Success - break out of retry loop
+                break
+
+            except RootPanoramaUnavailableError as e:
+                logger.warning(
+                    "Attempt %d/%d: Root panorama unavailable at (%f, %f): %s",
+                    location_attempt + 1,
+                    max_location_attempts,
+                    lat,
+                    lon,
+                    e,
+                )
+                if location_attempt == max_location_attempts - 1:
+                    raise ValueError(
+                        f"Failed to find valid panorama location after {max_location_attempts} attempts"
+                    )
+                # Continue to next iteration to sample new coordinates
+                continue
+
+            except Exception as e:
+                # Other errors are not retryable
+                raise ValueError(f"Failed to load panorama data for {lat}, {lon}: {e}")
+
+        if graph_result is None:
             raise ValueError(
-                "No starting coordinates provided (either input_lat/lon or geofence required)"
-            )
-
-        # Get or fetch panorama graph using asset manager
-        # Round coordinates to 6 decimal places for consistent cache handling
-        lat = round(lat, 6)
-        lon = round(lon, 6)
-        try:
-            graph_result = self.asset_manager.prepare_graph(root_lat=lat, root_lon=lon)
-        except Exception as e:
-            raise ValueError(f"Failed to load panorama data for {lat}, {lon}: {e}")
-
-        if not graph_result.graph:
-            raise ValueError(
-                f"No panorama graph available for coordinates {lat}, {lon}"
-            )
-
-        if graph_result.missing_assets:
-            missing = ", ".join(sorted(graph_result.missing_assets))
-            raise ValueError(
-                f"Missing cached assets for panoramas ({missing}) at {lat}, {lon}"
+                f"Failed to prepare panorama graph after {max_location_attempts} attempts"
             )
 
         # Store prepared graph

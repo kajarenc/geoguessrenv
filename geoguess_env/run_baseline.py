@@ -116,52 +116,101 @@ def run_episodes(args) -> List[Dict]:
     for episode_idx in range(args.episodes):
         print(f"Episode {episode_idx + 1}/{args.episodes}")
 
-        # Create environment for this episode
-        episode_config = base_env_config.copy()
+        episode_result = None
+        max_episode_retries = 5
 
-        # For each episode, set a unique seed to get different locations from geofence
-        if geofence:
-            episode_seed = args.seed + episode_idx if args.seed else episode_idx
-            episode_config["seed"] = episode_seed
+        for episode_attempt in range(max_episode_retries):
+            try:
+                # Create an environment for this episode
+                episode_config = base_env_config.copy()
 
-        env = gym.make(ENV_ID, config=episode_config)
+                # For each episode, set a unique seed to get different locations from geofence
+                if geofence:
+                    # Add attempt offset to ensure different coordinates on retry
+                    episode_seed = (
+                        args.seed + episode_idx * 10 + episode_attempt
+                        if args.seed
+                        else episode_idx * 10 + episode_attempt
+                    )
+                    episode_config["seed"] = episode_seed
 
-        # Reset environment and agent
-        observation, info = env.reset()
-        agent.reset()
+                env = gym.make(ENV_ID, config=episode_config)
 
-        # Store episode start data for replay
-        episode_data = {
-            "provider": args.provider,
-            "pano_id": info.get("pano_id"),
-            "gt_lat": info.get("gt_lat"),
-            "gt_lon": info.get("gt_lon"),
-            "initial_yaw_deg": info.get("pose", {}).get("yaw_deg", 0.0),
-        }
+                # Reset environment and agent
+                observation, info = env.reset()
+                agent.reset()
 
-        # Run episode
-        done = False
-        while not done:
-            action = agent.act(observation, info)
-            observation, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
+                # Store episode start data for replay
+                episode_data = {
+                    "provider": args.provider,
+                    "pano_id": info.get("pano_id"),
+                    "gt_lat": info.get("gt_lat"),
+                    "gt_lon": info.get("gt_lon"),
+                    "initial_yaw_deg": info.get("pose", {}).get("yaw_deg", 0.0),
+                }
 
-        # Store results
-        result = {
-            "episode": episode_idx,
-            "pano_id": episode_data["pano_id"],
-            "gt_lat": episode_data["gt_lat"],
-            "gt_lon": episode_data["gt_lon"],
-            "guess_lat": info.get("guess_lat"),
-            "guess_lon": info.get("guess_lon"),
-            "distance_km": info.get("distance_km"),
-            "score": info.get("score", 0.0),
-            "steps": info.get("steps", 0),
-        }
-        results.append(result)
+                # Run episode
+                done = False
+                while not done:
+                    action = agent.act(observation, info)
+                    observation, reward, terminated, truncated, info = env.step(action)
+                    done = terminated or truncated
 
-        # Close episode environment
-        env.close()
+                # Store results
+                episode_result = {
+                    "episode": episode_idx,
+                    "pano_id": episode_data["pano_id"],
+                    "gt_lat": episode_data["gt_lat"],
+                    "gt_lon": episode_data["gt_lon"],
+                    "guess_lat": info.get("guess_lat"),
+                    "guess_lon": info.get("guess_lon"),
+                    "distance_km": info.get("distance_km"),
+                    "score": info.get("score", 0.0),
+                    "steps": info.get("steps", 0),
+                }
+
+                # Close episode environment
+                env.close()
+
+                # Episode succeeded, break out of retry loop
+                break
+
+            except Exception as e:
+                print(
+                    f"Episode {episode_idx + 1} attempt {episode_attempt + 1} failed: {e}"
+                )
+
+                # Close environment if it was created
+                try:
+                    env.close()
+                except Exception as e:
+                    pass
+
+                # If this was the last attempt, mark episode as failed
+                if episode_attempt == max_episode_retries - 1:
+                    print(
+                        f"Episode {episode_idx + 1} failed after {max_episode_retries} attempts, skipping..."
+                    )
+                    episode_result = {
+                        "episode": episode_idx,
+                        "pano_id": None,
+                        "gt_lat": None,
+                        "gt_lon": None,
+                        "guess_lat": None,
+                        "guess_lon": None,
+                        "distance_km": None,
+                        "score": 0.0,
+                        "steps": 0,
+                        "error": str(e),
+                    }
+                else:
+                    print(
+                        f"Retrying episode {episode_idx + 1} with different coordinates..."
+                    )
+                    continue
+
+        if episode_result:
+            results.append(episode_result)
 
     return results
 
@@ -187,6 +236,7 @@ def save_results_csv(results: List[Dict], output_path: str) -> None:
         "distance_km",
         "score",
         "steps",
+        "error",
     ]
 
     with open(output_path, "w", newline="") as csvfile:

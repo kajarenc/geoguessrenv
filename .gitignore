@@ -174,8 +174,8 @@ poetry.toml
 pyrightconfig.json
 
 gymnasium_env/load/podzdamerplatzimages/
-cache/
-cache/metadata/nearest_pano_cache.json
+#cache/
+#cache/metadata/nearest_pano_cache.json
 # macOS
 .DS_Store
 **/.DS_Store

@@ -444,16 +444,20 @@ def test_geofence_sampling_deterministic():
 
     env = GeoGuessrEnv(config=config)
 
-    # Sample with same seed should produce identical results
+    # Sample with same seed should produce identical results when the episode RNG
+    # is reset to the same state.
     seed = 42
-    lat1, lon1 = env._sample_from_geofence(seed)
-    lat2, lon2 = env._sample_from_geofence(seed)
+    env._episode_rng = np.random.default_rng(seed)
+    lat1, lon1 = env._sample_from_geofence()
+    env._episode_rng = np.random.default_rng(seed)
+    lat2, lon2 = env._sample_from_geofence()
 
     assert lat1 == lat2
     assert lon1 == lon2
 
     # Different seeds should produce different results (very high probability)
-    lat3, lon3 = env._sample_from_geofence(seed + 1)
+    env._episode_rng = np.random.default_rng(seed + 1)
+    lat3, lon3 = env._sample_from_geofence()
     assert lat3 != lat1 or lon3 != lon1
 
 
@@ -476,9 +480,12 @@ def test_geofence_sampling_within_bounds():
 
     env = GeoGuessrEnv(config=config)
 
+    # Seed the episode RNG once for reproducible sampling
+    env._episode_rng = np.random.default_rng(123)
+
     # Test multiple samples to ensure they're all within bounds
     for i in range(10):
-        lat, lon = env._sample_from_geofence(i)
+        lat, lon = env._sample_from_geofence()
 
         # Compute distance from center using Haversine formula
         distance_km = GeometryUtils.haversine_distance(center_lat, center_lon, lat, lon)
@@ -564,8 +571,8 @@ def test_reset_seed_determinism(tmp_path):
     center_lat = geofence["center"]["lat"]
     center_lon = geofence["center"]["lon"]
 
-    def deterministic_geofence_sample(seed_value):
-        base_seed = seed_value or 0
+    def deterministic_geofence_sample():
+        base_seed = env._episode_seed or 0
         offset = (base_seed % 1000) * 1e-4
         return center_lat + offset, center_lon - offset
 
@@ -628,6 +635,35 @@ def test_reset_seed_determinism(tmp_path):
     assert not math.isclose(info3["gt_lat"], info1["gt_lat"])
     assert not math.isclose(info3["gt_lon"], info1["gt_lon"])
     assert not math.isclose(info3["pose"]["yaw_deg"], info1["pose"]["yaw_deg"])
+
+
+def test_geofence_valid_sampling_reuses_rng():
+    """The valid-coordinate sampler should respect the shared episode RNG state."""
+    geofence = {
+        "type": "circle",
+        "center": {"lat": 47.620908, "lon": -122.353508},
+        "radius_km": 10.0,
+    }
+
+    config = {
+        "cache_root": "/tmp",
+        "geofence": geofence,
+        "max_steps": 5,
+    }
+
+    env = GeoGuessrEnv(config=config)
+
+    with patch.object(
+        env.asset_manager, "resolve_nearest_panorama", return_value="pano_id"
+    ):
+        env._episode_rng = np.random.default_rng(4242)
+        lat1, lon1 = env._sample_valid_coordinates_from_geofence()
+
+        env._episode_rng = np.random.default_rng(4242)
+        lat2, lon2 = env._sample_valid_coordinates_from_geofence()
+
+    assert lat1 == lat2
+    assert lon1 == lon2
 
 
 def test_geofence_sampling_with_fallback():

@@ -20,6 +20,10 @@ from .providers.base import PanoramaAsset, PanoramaMetadata, PanoramaProvider
 logger = logging.getLogger(__name__)
 
 
+class RootPanoramaUnavailableError(Exception):
+    """Raised when a root panorama cannot be prepared due to download failures."""
+
+
 @dataclass
 class PanoramaGraphResult:
     """Result of preparing a panorama graph for an episode."""
@@ -65,6 +69,10 @@ class AssetManager:
         self._metadata_cache: Dict[str, PanoramaMetadata] = {}
         self._image_cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
         self._image_cache_capacity = max(8, max_connected_panoramas * 2)
+
+        # Failed panoramas blocklist
+        self._failed_panoramas: Set[str] = set()
+        self._load_failed_panoramas()
 
     def get_panorama_asset(self, pano_id: str) -> Optional[PanoramaAsset]:
         """
@@ -159,6 +167,47 @@ class AssetManager:
 
         return result
 
+    def _load_failed_panoramas(self):
+        """Load the list of failed panoramas from disk."""
+        blocklist_file = self.metadata_dir / "failed_panoramas.json"
+        if blocklist_file.exists():
+            try:
+                with open(blocklist_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self._failed_panoramas = set(data.get("failed_ids", []))
+                    logger.info(
+                        "Loaded %d failed panorama IDs from blocklist",
+                        len(self._failed_panoramas),
+                    )
+            except Exception as e:
+                logger.warning("Failed to load panorama blocklist: %s", e)
+                self._failed_panoramas = set()
+        else:
+            self._failed_panoramas = set()
+
+    def _save_failed_panoramas(self):
+        """Save the list of failed panoramas to disk."""
+        blocklist_file = self.metadata_dir / "failed_panoramas.json"
+        try:
+            with open(blocklist_file, "w", encoding="utf-8") as f:
+                json.dump({"failed_ids": list(self._failed_panoramas)}, f)
+                logger.debug(
+                    "Saved %d failed panorama IDs to blocklist",
+                    len(self._failed_panoramas),
+                )
+        except Exception as e:
+            logger.warning("Failed to save panorama blocklist: %s", e)
+
+    def _add_to_blocklist(self, pano_id: str):
+        """Add a panorama ID to the blocklist."""
+        self._failed_panoramas.add(pano_id)
+        self._save_failed_panoramas()
+        logger.info("Added panorama %s to blocklist", pano_id)
+
+    def is_blocklisted(self, pano_id: str) -> bool:
+        """Check if a panorama ID is blocklisted."""
+        return pano_id in self._failed_panoramas
+
     def clear_cache(self, pano_ids: Optional[Set[str]] = None):
         """
         Clear cached assets.
@@ -205,6 +254,15 @@ class AssetManager:
         if not root_pano_id:
             raise ValueError(f"No panorama found for {root_lat}, {root_lon}")
 
+        # Check if root panorama is blocklisted
+        if self.is_blocklisted(root_pano_id):
+            logger.warning(
+                "Root panorama %s is blocklisted, cannot prepare graph", root_pano_id
+            )
+            raise RootPanoramaUnavailableError(
+                f"Root panorama {root_pano_id} at ({root_lat}, {root_lon}) is blocklisted due to previous download failures"
+            )
+
         raw_graph = self._load_panorama_graph(root_pano_id)
 
         if not raw_graph:
@@ -245,8 +303,10 @@ class AssetManager:
             )
 
         if root_pano_id not in sanitized_graph:
-            message = f"Root panorama {root_pano_id} unavailable after preparation"
-            raise ValueError(message)
+            # Root panorama failed - add to blocklist and raise special exception
+            self._add_to_blocklist(root_pano_id)
+            message = f"Root panorama {root_pano_id} unavailable after preparation (download failed)"
+            raise RootPanoramaUnavailableError(message)
 
         if sanitized_graph:
             valid_nodes = set(sanitized_graph.keys())
@@ -306,18 +366,44 @@ class AssetManager:
                     if cache_key in cache_data:
                         cached_pano_id = cache_data[cache_key]
                         if cached_pano_id:
-                            logger.info(
-                                "Nearest panorama for (%.6f, %.6f) resolved from cache: %s",
-                                rounded_lat,
-                                rounded_lon,
-                                cached_pano_id,
-                            )
-                        return cached_pano_id
+                            # Check if cached ID is blocklisted
+                            if self.is_blocklisted(cached_pano_id):
+                                logger.info(
+                                    "Cached panorama %s for (%.6f, %.6f) is blocklisted, will fetch new",
+                                    cached_pano_id,
+                                    rounded_lat,
+                                    rounded_lon,
+                                )
+                                # Remove from cache
+                                del cache_data[cache_key]
+                                with open(cache_file, "w", encoding="utf-8") as f:
+                                    json.dump(cache_data, f)
+                            else:
+                                logger.info(
+                                    "Nearest panorama for (%.6f, %.6f) resolved from cache: %s",
+                                    rounded_lat,
+                                    rounded_lon,
+                                    cached_pano_id,
+                                )
+                                return cached_pano_id
+                        else:
+                            return cached_pano_id
             except Exception:
                 pass
 
         # Fetch from provider using rounded coordinates for consistency
         pano_id = self.provider.find_nearest_panorama(rounded_lat, rounded_lon)
+
+        # Check if the found panorama is blocklisted
+        if pano_id and self.is_blocklisted(pano_id):
+            logger.warning(
+                "Nearest panorama %s for (%.6f, %.6f) is blocklisted",
+                pano_id,
+                rounded_lat,
+                rounded_lon,
+            )
+            return None
+
         if pano_id:
             logger.info(
                 "Nearest panorama for (%.6f, %.6f) fetched from provider: %s",
@@ -492,6 +578,11 @@ class AssetManager:
 
     def _fetch_and_cache_asset(self, pano_id: str) -> bool:
         """Fetch and cache a complete panorama asset."""
+        # Skip if blocklisted
+        if self.is_blocklisted(pano_id):
+            logger.debug("Skipping blocklisted panorama %s", pano_id)
+            return False
+
         # Get or fetch metadata
         metadata = self._get_or_fetch_metadata(pano_id)
         if not metadata:
@@ -507,10 +598,12 @@ class AssetManager:
                 )
             else:
                 logger.warning(
-                    "Failed to download panorama image for %s to %s",
+                    "Failed to download panorama image for %s to %s - adding to blocklist",
                     pano_id,
                     image_path,
                 )
+                # Add to the blocklist on download failure
+                self._add_to_blocklist(pano_id)
                 return False
         else:
             logger.debug("Panorama image already cached for %s", pano_id)

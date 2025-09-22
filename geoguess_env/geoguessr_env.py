@@ -1,6 +1,5 @@
 import logging
 import math
-import random
 from typing import Dict, List, Optional, Tuple
 
 import gymnasium as gym
@@ -83,6 +82,8 @@ class GeoGuessrEnv(gym.Env):
         self._current_image: Optional[np.ndarray] = None
         self._steps: int = 0
         self._heading_rad: float = 0.0  # current camera heading in radians
+        self._episode_seed: Optional[int] = None
+        self._episode_rng: Optional[np.random.Generator] = None
 
         # Pygame render state
         self._screen = None
@@ -163,10 +164,13 @@ class GeoGuessrEnv(gym.Env):
         if seed is None and self.config.seed is not None:
             seed = self.config.seed
         super().reset(seed=seed)
+        # Capture the RNG configured by the base class for deterministic sampling
+        self._episode_seed = self.np_random_seed
+        self._episode_rng = self.np_random
 
         # Determine starting coordinates with retry logic for geofence sampling
         if self.config.geofence:
-            lat, lon = self._sample_valid_coordinates_from_geofence(seed)
+            lat, lon = self._sample_valid_coordinates_from_geofence()
         else:
             lat, lon = self.config.input_lat, self.config.input_lon
 
@@ -376,21 +380,17 @@ class GeoGuessrEnv(gym.Env):
             self._clock = None
 
     # --- Geofence sampling helpers ---
-    def _sample_from_geofence(self, seed: Optional[int] = None) -> Tuple[float, float]:
-        """
-        Sample coordinates from the configured geofence using GeometryUtils.
+    def _get_episode_rng(self) -> np.random.Generator:
+        if self._episode_rng is None:
+            self._episode_rng = self.np_random
+        return self._episode_rng
 
-        Args:
-            seed: Random seed for deterministic sampling
-
-        Returns:
-            Tuple of (latitude, longitude) within the geofence
-        """
+    def _sample_from_geofence(self) -> Tuple[float, float]:
+        """Sample coordinates from the configured geofence using the episode RNG."""
         if not self.config.geofence:
             raise ValueError("No geofence configured for sampling")
 
-        # Use a separate random instance for geofence sampling to ensure determinism
-        rng = random.Random(seed)
+        rng = self._get_episode_rng()
 
         geofence = self.config.geofence
         if geofence.type == "circle":
@@ -407,17 +407,8 @@ class GeoGuessrEnv(gym.Env):
         else:
             raise ValueError(f"Unsupported geofence type: {geofence.type}")
 
-    def _sample_valid_coordinates_from_geofence(
-        self, seed: Optional[int] = None
-    ) -> Tuple[float, float]:
-        """
-        Sample coordinates from geofence with retry logic to find locations with panoramas.
-
-        Args:
-            seed: Random seed for deterministic sampling
-
-        Returns:
-            Tuple of (latitude, longitude) where a panorama exists
+    def _sample_valid_coordinates_from_geofence(self) -> Tuple[float, float]:
+        """Sample geofence coordinates with retries until a cached panorama is found.
 
         Raises:
             ValueError: If no valid coordinates found after max attempts
@@ -425,9 +416,7 @@ class GeoGuessrEnv(gym.Env):
         max_attempts = 10
 
         for attempt in range(max_attempts):
-            # Use the attempt number to vary the seed for each retry
-            attempt_seed = (seed + attempt) if seed is not None else attempt
-            lat, lon = self._sample_from_geofence(attempt_seed)
+            lat, lon = self._sample_from_geofence()
 
             # Round coordinates to check if panorama exists
             rounded_lat = round(lat, 6)

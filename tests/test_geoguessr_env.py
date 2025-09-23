@@ -360,6 +360,72 @@ def test_termination_conditions():
             assert reward == 0.0  # Truncation gives 0 reward
 
 
+def test_max_steps_truncation_path(test_config_with_fixtures):
+    """Ensure repeated clicks hit the max-step truncation guard."""
+    config = dict(test_config_with_fixtures)
+    config["max_steps"] = 3
+    env = GeoGuessrEnv(config=config)
+
+    try:
+        _, info = env.reset()
+        assert info["steps"] == 0
+
+        # Use the first available link for navigation; fall back to center click.
+        if info["links"]:
+            click_xy = info["links"][0]["screen_xy"]
+        else:
+            click_xy = (env._image_width // 2, env._image_height // 2)
+
+        for step_index in range(config["max_steps"]):
+            action = env.action_parser.create_click_action(*click_xy)
+            _, reward, terminated, truncated, info = env.step(action)
+
+            assert reward == 0.0
+            assert info["steps"] == step_index + 1
+
+            if step_index < config["max_steps"] - 1:
+                assert not terminated
+                assert not truncated
+            else:
+                assert not terminated
+                assert truncated
+
+            if info["links"]:
+                click_xy = info["links"][0]["screen_xy"]
+
+    finally:
+        env.close()
+
+
+def test_answer_metadata_propagation(test_config_with_fixtures):
+    """Answer steps should populate guess and scoring metadata in info."""
+    env = GeoGuessrEnv(config=test_config_with_fixtures)
+
+    try:
+        _, info = env.reset()
+        actual_lat = float(info["gt_lat"])
+        actual_lon = float(info["gt_lon"])
+        action = {"op": "answer", "value": [actual_lat, actual_lon]}
+
+        _, reward, terminated, truncated, answer_info = env.step(action)
+
+        assert terminated is True
+        assert truncated is False
+        assert reward == pytest.approx(1.0, rel=1e-6)
+
+        expected_distance = GeometryUtils.haversine_distance(
+            actual_lat, actual_lon, actual_lat, actual_lon
+        )
+
+        assert answer_info["guess_lat"] == pytest.approx(actual_lat)
+        assert answer_info["guess_lon"] == pytest.approx(actual_lon)
+        assert answer_info["distance_km"] == pytest.approx(expected_distance, abs=1e-6)
+        assert answer_info["score"] == pytest.approx(reward, rel=1e-6)
+
+    finally:
+        env.close()
+
+
 def test_arrow_click_mapping_with_known_coordinates():
     """Test arrow click mapping with known links at specific coordinates"""
     config = {

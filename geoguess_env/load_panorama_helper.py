@@ -6,7 +6,7 @@ from streetview import crop_bottom_and_right_black_border, get_panorama
 logger = logging.getLogger(__name__)
 
 
-def load_single_panorama(pano_id: str, image_path: str, zoom: int = 4):
+def load_single_panorama(pano_id: str, image_path: str, zoom: int = 3):
     try:
         image = get_panorama(
             pano_id=pano_id,

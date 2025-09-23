@@ -6,8 +6,8 @@ and navigation link projections.
 """
 
 import math
-import random
 
+import numpy as np
 import pytest
 
 from geoguess_env.geometry_utils import GeometryUtils
@@ -252,7 +252,7 @@ class TestGeometryUtils:
         """Test circular geofence sampling."""
         center_lat, center_lon = 47.620908, -122.353508
         radius_km = 10.0
-        rng = random.Random(42)
+        rng = np.random.default_rng(42)
 
         # Sample multiple points
         for _ in range(100):
@@ -275,8 +275,8 @@ class TestGeometryUtils:
         center_lat, center_lon = 40.7128, -74.0060
         radius_km = 5.0
 
-        rng1 = random.Random(123)
-        rng2 = random.Random(123)
+        rng1 = np.random.default_rng(123)
+        rng2 = np.random.default_rng(123)
 
         lat1, lon1 = GeometryUtils.sample_circular_geofence(
             center_lat, center_lon, radius_km, rng1
@@ -311,7 +311,7 @@ class TestGeometryUtils:
         """Test polygon geofence sampling."""
         # Triangle polygon
         polygon = [(0, 0), (0, 10), (10, 0)]
-        rng = random.Random(42)
+        rng = np.random.default_rng(42)
 
         # Sample multiple points
         for _ in range(50):
@@ -324,7 +324,7 @@ class TestGeometryUtils:
         """Test polygon geofence sampling with invalid polygon."""
         # Polygon with too few points
         polygon = [(0, 0), (10, 10)]
-        rng = random.Random(42)
+        rng = np.random.default_rng(42)
 
         with pytest.raises(ValueError):
             GeometryUtils.sample_polygon_geofence(polygon, rng)

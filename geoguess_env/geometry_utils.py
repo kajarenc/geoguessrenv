@@ -6,8 +6,7 @@ distance calculations, and link projection for panorama navigation.
 """
 
 import math
-import random
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -223,7 +222,7 @@ class GeometryUtils:
         center_lat: float,
         center_lon: float,
         radius_km: float,
-        rng: Union[random.Random, np.random.Generator],
+        rng: np.random.Generator,
     ) -> Tuple[float, float]:
         """
         Sample a random point within a circular geofence.
@@ -232,18 +231,14 @@ class GeometryUtils:
             center_lat: Center latitude in degrees
             center_lon: Center longitude in degrees
             radius_km: Radius in kilometers
-            rng: Random number generator instance (Python Random or NumPy Generator)
+            rng: NumPy random number generator instance
 
         Returns:
             Tuple of (latitude, longitude) within the circle
         """
         # Sample uniformly within circle using sqrt for area correction
-        if isinstance(rng, np.random.Generator):
-            r = radius_km * math.sqrt(rng.random())
-            theta = 2 * math.pi * rng.random()
-        else:
-            r = radius_km * math.sqrt(rng.random())
-            theta = 2 * math.pi * rng.random()
+        r = radius_km * math.sqrt(rng.random())
+        theta = 2 * math.pi * rng.random()
 
         # Convert to lat/lon offset (approximate)
         # 1 degree latitude ≈ 111 km
@@ -298,7 +293,7 @@ class GeometryUtils:
     @staticmethod
     def sample_polygon_geofence(
         polygon: List[Tuple[float, float]],
-        rng: Union[random.Random, np.random.Generator],
+        rng: np.random.Generator,
         max_attempts: int = 1000,
     ) -> Tuple[float, float]:
         """
@@ -308,7 +303,7 @@ class GeometryUtils:
 
         Args:
             polygon: List of (lat, lon) tuples defining polygon vertices
-            rng: Random number generator instance (Python Random or NumPy Generator)
+            rng: NumPy random number generator instance
             max_attempts: Maximum sampling attempts before giving up
 
         Returns:
@@ -328,12 +323,8 @@ class GeometryUtils:
 
         # Rejection sampling
         for _ in range(max_attempts):
-            if isinstance(rng, np.random.Generator):
-                sample_lat = rng.uniform(min_lat, max_lat)
-                sample_lon = rng.uniform(min_lon, max_lon)
-            else:
-                sample_lat = rng.uniform(min_lat, max_lat)
-                sample_lon = rng.uniform(min_lon, max_lon)
+            sample_lat = rng.uniform(min_lat, max_lat)
+            sample_lon = rng.uniform(min_lon, max_lon)
 
             if GeometryUtils.point_in_polygon(sample_lat, sample_lon, polygon):
                 return sample_lat, sample_lon

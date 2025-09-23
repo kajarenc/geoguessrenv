@@ -34,4 +34,4 @@ def load_single_panorama(pano_id: str, image_path: str, zoom: int = 4):
         )
     resample_filter = getattr(Image, "Resampling", Image).LANCZOS
     image = image.resize((target_width, target_height), resample=resample_filter)
-    image.save(image_path, "jpeg")
+    image.save(image_path, "jpeg", quality=95, optimize=True)

@@ -8,11 +8,11 @@ This repository contains custom Gymnasium environments and wrappers, including a
 
 ## Current Components
 
-- **Environment**: `GeoGuessrWorldEnv` - A Gymnasium-compatible environment (in development) for panorama navigation
-- **GridWorldEnv** - A simple grid-based environment example
-- **OpenAI Agent** - An agent that uses OpenAI's vision models for navigation
-- **Wrappers** - Educational implementations of common RL wrapper patterns
-- **Demo Scripts** - Example usage of the environments
+- **Environment**: `GeoGuessrEnv` - A Gymnasium-compatible environment for panorama navigation
+- **OpenAI Agent** - Vision-based agent using OpenAI's GPT-4 Vision for intelligent navigation
+- **Baseline Agents** - Simple benchmark agents for testing and comparison
+- **VLM Broker** - Standardized interface for Vision-Language Model interactions
+- **Agent Runners** - CLI scripts for running different agent implementations
 - **Tests** - Test suite covering environment functionality
 
 ## Development Commands
@@ -37,7 +37,10 @@ uv pip install -e .
 uv run python geoguessr_env_demo.py
 
 # OpenAI agent (requires OPENAI_API_KEY)
-uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 10 --input_lat 47.620908 --input_lon -122.353508 --render
+uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 5 --input_lat 47.620908 --input_lon -122.353508 --render
+
+# Baseline agent evaluation
+uv run python geoguess_env/run_baseline.py --episodes 2 --out results.csv --geofence geofences/seattle_15km.json --max-nav-steps 10 --seed 123
 ```
 
 ### Testing
@@ -59,12 +62,17 @@ The codebase follows standard Gymnasium conventions:
   - `action_parser.py` - Action parsing and validation logic
   - `asset_manager.py` - Manages caching and loading of panorama assets
   - `geometry_utils.py` - Geographic and geometric calculations
+  - `vlm_broker.py` - Vision-Language Model broker for standardized prompting
+  - `baseline_agent.py` - Baseline agent implementations for benchmarking
+  - `run_baseline.py` - CLI runner for baseline agent evaluation
   - `providers/` - Street view data provider implementations
     - `base.py` - Abstract base provider class
     - `google_streetview.py` - Google Street View API integration
 - `agents/` - Agent implementations including OpenAI-powered agent
-  - `openai_agent.py` - Vision-based navigation agent
+  - `openai_agent.py` - Vision-based navigation agent using OpenAI models
+  - `openai_models.py` - Pydantic models for structured tool calling
   - `base.py` - Base agent interface
+  - `utils.py` - Agent utility functions for caching and encoding
 - `tests/` - Comprehensive test suite
 - `scripts/` - Utility and demo scripts
   - `run_openai_agent.py` - OpenAI agent runner
@@ -86,12 +94,12 @@ The codebase follows standard Gymnasium conventions:
 
 ## Current Environment State
 
-The `GeoGuessrWorldEnv` is currently implemented with basic functionality:
+The `GeoGuessrEnv` is currently implemented with basic functionality:
 
 ### Action Format (Current Implementation)
-Actions use a dictionary format with operation-specific keys:
-- **Click**: `{"op": "click", "click": [x, y]}`
-- **Answer**: `{"op": "answer", "answer": [lat_deg, lon_deg]}`
+Actions use a dictionary format with a unified value key:
+- **Click**: `{"op": "click", "value": [x, y]}`
+- **Answer**: `{"op": "answer", "value": [lat_deg, lon_deg]}`
 
 ### Demo Usage
 The current demo shows:
@@ -99,6 +107,44 @@ The current demo shows:
 - Basic click navigation and answer submission
 - Local caching in `cache/` directory
 - Integration with street view data providers
+
+## Agent Implementations
+
+The project includes several agent implementations for different use cases:
+
+### OpenAIVisionAgent
+- **Purpose**: Vision-based navigation using OpenAI's GPT-4 Vision models
+- **Strategy**: Uses structured tool calling with vision analysis for intelligent navigation
+- **Features**:
+  - Episodic memory with navigation history
+  - Structured prompting via VLMBroker
+  - Caching for repeated scenarios
+  - Link snapping for improved navigation accuracy
+  - Force-answer logic when approaching step limits
+- **Requirements**: OpenAI API key (`OPENAI_API_KEY`)
+- **Usage**: Suitable for research and high-performance navigation
+
+### BaselineAgent
+- **Purpose**: Minimal arrow follower for benchmarking and testing
+- **Strategy**:
+  - Sweeps horizontally across the image to find navigation links
+  - Follows links for up to K steps or until loop detection
+  - Answers with continent centroid heuristics
+- **Features**:
+  - Loop detection via panorama ID tracking
+  - Configurable maximum navigation steps
+  - Simple geographic priors for guessing
+  - Reproducible with seed control
+- **Usage**: Baseline for performance comparison and environment testing
+
+### ImprovedBaselineAgent
+- **Purpose**: Enhanced baseline with learning capabilities
+- **Strategy**: Extends BaselineAgent with success tracking
+- **Features**:
+  - Learns from successful navigation clicks
+  - Enhanced answer generation (placeholder for future improvements)
+  - Could incorporate text detection, architectural analysis, etc.
+- **Usage**: Development platform for baseline improvements
 
 ## User Preferences & Code Style
 
@@ -126,12 +172,22 @@ This is an educational/development repository for custom Gymnasium environments,
 The project includes:
 - Basic environment functionality tests in `tests/test_geoguessr_env.py`
 - OpenAI agent tool tests in `tests/test_openai_agent_tools.py`
+- Action parser tests in `tests/test_action_parser.py`
+- Asset manager tests in `tests/test_asset_manager.py`
+- Configuration validation tests in `tests/test_config.py`
+- Geometry utilities tests in `tests/test_geometry_utils.py`
+- Provider tests in `tests/test_google_streetview_provider.py`
+- Integration tests in `tests/test_integration.py`
+- Environment retry logic tests in `tests/test_env_retry_logic.py`
+- Blocklist functionality tests in `tests/test_blocklist_functionality.py`
 - Test configuration in `tests/conftest.py`
+- Reusable test fixtures in `tests/test_fixtures.py`
 
 ### Usage Examples
 1. **Basic Demo**: Run `geoguessr_env_demo.py` for a simple environment test
 2. **OpenAI Agent**: Use the agent runner script with vision models for navigation
-3. **Environment Integration**: Import and use environments via standard Gymnasium API
+3. **Baseline Agent**: Run baseline evaluation for benchmarking and testing
+4. **Environment Integration**: Import and use environments via standard Gymnasium API
 
 ### Development Status
 This is an active development project working toward implementing:
@@ -170,9 +226,17 @@ The project uses a structured configuration system based on dataclasses (`config
 
 ### Action Space Design
 Actions are dictionary-based with operation types:
-- Click actions include pixel coordinates and confidence scores
-- Answer actions provide latitude/longitude guesses
-- Action parser validates and normalizes all inputs
+- Click actions include pixel coordinates in the "value" array: [x, y]
+- Answer actions provide latitude/longitude guesses in the "value" array: [lat, lon]
+- Action parser validates and normalizes all inputs with fallback to safe defaults
+
+### VLM Broker Architecture
+The `VLMBroker` provides standardized I/O between vision-language models and the environment:
+- **Prompt Building**: Generates consistent prompts explaining the task, image context, and allowed actions
+- **Action Parsing**: Extracts and validates actions from VLM response text
+- **Fallback Handling**: Provides safe default actions when parsing fails
+- **JSON Schema**: Uses the single format `{"op":"operation","value":[...]}` for all actions
+- **Error Recovery**: Gracefully handles malformed responses with center-click fallbacks
 
 ## Testing Strategy
 
@@ -243,6 +307,11 @@ uv run ruff check . --fix
 # Run specific test
 uv run pytest tests/test_geoguessr_env.py::test_click_action -v
 
+# Run baseline agent
+uv run python geoguess_env/run_baseline.py --episodes 2 --out test_results.csv --geofence geofences/seattle_15km.json
+
+# Test OpenAI agent (requires API key)
+uv run python scripts/run_openai_agent.py --model gpt-4o --max_nav_steps 5 --render
 ```
 
 ### Debugging Tips

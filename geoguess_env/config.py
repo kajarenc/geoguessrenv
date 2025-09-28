@@ -5,9 +5,11 @@ This module provides structured configuration classes for the environment
 with validation and type safety.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union, cast
 
 
 @dataclass
@@ -17,9 +19,9 @@ class GeofenceConfig:
     type: str  # 'circle', 'polygon', etc.
     center: Optional[Dict[str, float]] = None  # {'lat': float, 'lon': float}
     radius_km: Optional[float] = None
-    polygon: Optional[list] = None  # List of [lat, lon] points
+    polygon: Optional[List[List[float]]] = None  # List of [lat, lon] points
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate geofence configuration."""
         if self.type == "circle":
             if not self.center or "lat" not in self.center or "lon" not in self.center:
@@ -91,7 +93,7 @@ class GeoGuessrConfig:
     # Navigation configuration
     nav_config: NavigationConfig = field(default_factory=NavigationConfig)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate and normalize configuration."""
         # Normalize cache_root to Path
         self.cache_root = Path(self.cache_root)
@@ -124,12 +126,12 @@ class GeoGuessrConfig:
             raise ValueError("max_connected_panoramas must be positive")
 
     @classmethod
-    def from_dict(cls, config_dict: Optional[Dict]) -> "GeoGuessrConfig":
+    def from_dict(cls, config_dict: Mapping[str, object] | None) -> "GeoGuessrConfig":
         """
         Create configuration from dictionary.
 
         Args:
-            config_dict: Configuration dictionary (can be None)
+            config_dict: Configuration mapping (can be None)
 
         Returns:
             GeoGuessrConfig instance
@@ -137,7 +139,7 @@ class GeoGuessrConfig:
         if not config_dict:
             return cls()
 
-        config_data = dict(config_dict)
+        config_data: Dict[str, object] = dict(config_dict)
 
         allowed_top_level = {
             "max_steps",
@@ -160,9 +162,11 @@ class GeoGuessrConfig:
             )
 
         # Extract nested configurations
-        provider_config = ProviderConfig(**config_data.get("provider_config", {}))
-        render_config = RenderConfig(**config_data.get("render_config", {}))
-        nav_config = NavigationConfig(**config_data.get("nav_config", {}))
+        provider_config = ProviderConfig(
+            **_extract_mapping(config_data, "provider_config")
+        )
+        render_config = RenderConfig(**_extract_mapping(config_data, "render_config"))
+        nav_config = NavigationConfig(**_extract_mapping(config_data, "nav_config"))
 
         # Handle geofence
         geofence = None
@@ -170,7 +174,7 @@ class GeoGuessrConfig:
             geofence_data = config_data["geofence"]
             if isinstance(geofence_data, GeofenceConfig):
                 geofence = geofence_data
-            elif geofence_data:
+            elif isinstance(geofence_data, Mapping):
                 geofence_params = {
                     key: value
                     for key, value in geofence_data.items()
@@ -185,18 +189,18 @@ class GeoGuessrConfig:
 
                 geofence = GeofenceConfig(
                     type=geofence_type,
-                    center=geofence_params.get("center"),
-                    radius_km=geofence_params.get("radius_km"),
-                    polygon=geofence_params.get("polygon"),
+                    center=_coerce_center(geofence_params.get("center")),
+                    radius_km=_coerce_optional_float(geofence_params.get("radius_km")),
+                    polygon=_coerce_polygon(geofence_params.get("polygon")),
                 )
+            elif geofence_data is not None:
+                raise ValueError("Geofence configuration must be a mapping")
 
         # Create main config
         primary_keys = {"max_steps", "seed", "input_lat", "input_lon", "cache_root"}
         main_config = {
             key: config_data[key] for key in primary_keys if key in config_data
         }
-
-        # Ignore "mode" for now if present without treating it as an error
         main_config.pop("mode", None)
 
         return cls(
@@ -207,14 +211,14 @@ class GeoGuessrConfig:
             nav_config=nav_config,
         )
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Convert configuration to dictionary.
 
         Returns:
             Dictionary representation of configuration
         """
-        result = {
+        result: Dict[str, Any] = {
             "max_steps": self.max_steps,
             "seed": self.seed,
             "input_lat": self.input_lat,
@@ -225,7 +229,7 @@ class GeoGuessrConfig:
         if self.geofence:
             result["geofence"] = {
                 "type": self.geofence.type,
-                "center": self.geofence.center,
+                "center": dict(self.geofence.center) if self.geofence.center else None,
                 "radius_km": self.geofence.radius_km,
                 "polygon": self.geofence.polygon,
             }
@@ -267,3 +271,63 @@ class GeoGuessrConfig:
     def replays_dir(self) -> Path:
         """Get replays cache directory."""
         return Path(self.cache_root) / "replays"
+
+
+def _extract_mapping(source: Mapping[str, object], key: str) -> Dict[str, object]:
+    """Extract nested mapping from top-level configuration."""
+
+    value = source.get(key)
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise ValueError(f"Configuration field '{key}' must be a mapping")
+
+
+def _coerce_center(value: object) -> Dict[str, float] | None:
+    """Coerce optional geofence center mapping to floats."""
+
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError("Geofence center must be a mapping with 'lat' and 'lon'")
+
+    mapping_value = cast(Mapping[str, object], value)
+
+    if "lat" not in mapping_value or "lon" not in mapping_value:
+        raise ValueError("Geofence center requires 'lat' and 'lon' keys")
+
+    lat_raw = mapping_value.get("lat")
+    lon_raw = mapping_value.get("lon")
+    if not isinstance(lat_raw, (int, float)) or not isinstance(lon_raw, (int, float)):
+        raise ValueError("Geofence center coordinates must be numeric")
+
+    return {"lat": float(lat_raw), "lon": float(lon_raw)}
+
+
+def _coerce_optional_float(value: object) -> float | None:
+    """Cast optional numeric configuration values to float."""
+
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    raise ValueError("Geofence radius must be numeric")
+
+
+def _coerce_polygon(value: object) -> List[List[float]] | None:
+    """Validate optional polygon payload."""
+
+    if value is None:
+        return None
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        polygon: List[List[float]] = []
+        for point in value:
+            if not isinstance(point, Sequence) or len(point) < 2:
+                raise ValueError("Polygon points must be sequences of two numbers")
+            lat, lon = point[0], point[1]
+            if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+                raise ValueError("Polygon coordinates must be numeric")
+            polygon.append([float(lat), float(lon)])
+        return polygon
+    raise ValueError("Polygon must be a sequence of [lat, lon] pairs")

@@ -5,10 +5,15 @@ This module provides utilities for coordinate transformations,
 distance calculations, and link projection for panorama navigation.
 """
 
+from __future__ import annotations
+
 import math
-from typing import Dict, List, Optional, Tuple
+from collections.abc import Sequence
+from typing import List, Optional, Tuple
 
 import numpy as np
+
+from .types import FloatPair, LinkScreen, NavigationLink
 
 
 class GeometryUtils:
@@ -113,17 +118,17 @@ class GeometryUtils:
 
     @staticmethod
     def compute_link_screen_positions(
-        links: List[Dict],
+        links: Sequence[NavigationLink],
         pano_heading_rad: float,
         current_heading_rad: float,
         image_width: int,
         image_height: int,
-    ) -> List[Dict]:
+    ) -> List[LinkScreen]:
         """
         Compute screen positions for navigation links.
 
         Args:
-            links: List of link dictionaries with 'id' and 'direction' keys
+            links: Link metadata entries with 'id' and 'direction' keys
             pano_heading_rad: Panorama heading in radians
             current_heading_rad: Current camera heading in radians
             image_width: Image width in pixels
@@ -132,34 +137,36 @@ class GeometryUtils:
         Returns:
             List of link dictionaries with added screen position info
         """
-        screen_links = []
+        screen_links: List[LinkScreen] = []
         for link in links:
-            # Expect direction to be in radians from metadata
-            direction_rad = float(link.get("direction", 0.0))
-            link_id = link.get("id", "")
+            link_id = link.get("id") if isinstance(link, dict) else None
+            if not isinstance(link_id, str) or not link_id:
+                continue
 
-            # Calculate screen x position
+            direction_raw = link.get("direction") if isinstance(link, dict) else None
+            try:
+                direction_rad = (
+                    float(direction_raw) if direction_raw is not None else 0.0
+                )
+            except (TypeError, ValueError):
+                direction_rad = 0.0
+
             x = GeometryUtils.direction_to_screen_x(
                 direction_rad, pano_heading_rad, image_width
             )
-
-            # Y position is typically at horizon (middle of image)
             y = image_height // 2
 
-            # Calculate absolute heading for this link
             abs_heading = GeometryUtils.normalize_angle(direction_rad)
-
-            # Calculate relative heading difference from current view
             rel_heading_diff = GeometryUtils.angle_difference(
                 direction_rad, current_heading_rad
             )
 
-            screen_link = {
+            screen_link: LinkScreen = {
                 "id": link_id,
                 "heading_deg": math.degrees(abs_heading) % 360.0,
                 "screen_xy": [x, y],
-                "conf": 1.0,  # Default confidence
-                "_distance_px": None,  # Will be filled during hit-testing
+                "conf": 1.0,
+                "_distance_px": None,
                 "_rel_heading_deg": abs(math.degrees(rel_heading_diff)),
             }
 
@@ -171,10 +178,10 @@ class GeometryUtils:
     def find_clicked_link(
         click_x: int,
         click_y: int,
-        screen_links: List[Dict],
+        screen_links: List[LinkScreen],
         hit_radius: int,
         min_confidence: float = 0.0,
-    ) -> Optional[Dict]:
+    ) -> Optional[LinkScreen]:
         """
         Find the navigation link closest to a click position.
 
@@ -188,19 +195,23 @@ class GeometryUtils:
         Returns:
             Selected link dictionary, or None if no valid link found
         """
-        # Compute distances to all links
         for link in screen_links:
-            cx, cy = link["screen_xy"]
+            screen_xy = link.get("screen_xy")
+            if not screen_xy or len(screen_xy) != 2:
+                continue
+            cx, cy = screen_xy
             dx = click_x - cx
             dy = click_y - cy
-            distance = math.hypot(dx, dy)
-            link["_distance_px"] = distance
+            link["_distance_px"] = math.hypot(dx, dy)
 
-        # Filter by radius and confidence
         candidates = [
             link
             for link in screen_links
-            if (link["_distance_px"] <= hit_radius and link["conf"] >= min_confidence)
+            if (
+                (distance := link.get("_distance_px")) is not None
+                and distance <= hit_radius
+                and link.get("conf", 0.0) >= min_confidence
+            )
         ]
 
         if not candidates:
@@ -374,7 +385,7 @@ class GeometryUtils:
         return -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0
 
     @staticmethod
-    def clamp_coordinates(lat: float, lon: float) -> Tuple[float, float]:
+    def clamp_coordinates(lat: float, lon: float) -> FloatPair:
         """
         Clamp coordinates to valid ranges.
 

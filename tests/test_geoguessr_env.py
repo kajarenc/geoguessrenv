@@ -306,7 +306,7 @@ def test_reward_semantics():
     # Test answer reward - perfect guess should give high reward
     action_answer = {"op": "answer", "value": [47.620907, -122.353507]}
     obs, reward, terminated, truncated, info = env.step(action_answer)
-    assert reward > 0.9  # Should be close to 1.0 for a perfect guess
+    assert float(reward) > 0.9  # Should be close to 1.0 for a perfect guess
     assert terminated
 
     # Reset and test distant guess
@@ -317,7 +317,7 @@ def test_reward_semantics():
     # Guess far away (other side of world)
     action_bad = {"op": "answer", "value": [-47.620908, 57.646492]}
     obs, reward, terminated, truncated, info = env.step(action_bad)
-    assert reward < 0.1  # Should be very low for distant guess
+    assert float(reward) < 0.1  # Should be very low for distant guess
     assert terminated
 
 

@@ -159,13 +159,15 @@ class ActionParser:
     @staticmethod
     def _coerce_pair(values: object, *, name: str) -> FloatPair:
         """Coerce an arbitrary sequence into a pair of floats."""
+        expected_format = "[lat, lon]" if name == "answer" else "[x, y]"
+
         if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
             raise ActionParsingError(
-                f"{name.capitalize()} values must be a [x, y] sequence"
+                f"{name.capitalize()} values must be {expected_format} array"
             )
         if len(values) != 2:
             raise ActionParsingError(
-                f"{name.capitalize()} values must contain exactly two entries"
+                f"{name.capitalize()} values must be {expected_format} array"
             )
         try:
             first = float(values[0])

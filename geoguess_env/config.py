@@ -295,7 +295,7 @@ def _coerce_center(value: object) -> Dict[str, float] | None:
     mapping_value = cast(Mapping[str, object], value)
 
     if "lat" not in mapping_value or "lon" not in mapping_value:
-        raise ValueError("Geofence center requires 'lat' and 'lon' keys")
+        raise ValueError("Circular geofence requires center with lat/lon")
 
     lat_raw = mapping_value.get("lat")
     lon_raw = mapping_value.get("lon")

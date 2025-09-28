@@ -176,9 +176,19 @@ class GeoGuessrConfig:
                     for key, value in geofence_data.items()
                     if key in {"type", "center", "radius_km", "polygon"}
                 }
-                # Only create GeofenceConfig if 'type' is present
-                if "type" in geofence_params:
-                    geofence = GeofenceConfig(**geofence_params)  # type: ignore
+
+                geofence_type = geofence_params.get("type")
+                if not isinstance(geofence_type, str) or not geofence_type:
+                    raise ValueError(
+                        "Geofence configuration requires a string 'type' field"
+                    )
+
+                geofence = GeofenceConfig(
+                    type=geofence_type,
+                    center=geofence_params.get("center"),
+                    radius_km=geofence_params.get("radius_km"),
+                    polygon=geofence_params.get("polygon"),
+                )
 
         # Create main config
         primary_keys = {"max_steps", "seed", "input_lat", "input_lon", "cache_root"}

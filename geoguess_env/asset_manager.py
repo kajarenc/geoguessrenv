@@ -695,18 +695,36 @@ class AssetManager:
 
         links = data.get("links") or []
 
-        # Extract values with proper type checking
-        lat = float(data.get("lat", 0.0))
-        lon = float(data.get("lon", 0.0))
-        heading = float(data.get("heading", 0.0))
-        pitch = float(data.get("pitch", 0.0)) if data.get("pitch") is not None else None
-        roll = float(data.get("roll", 0.0)) if data.get("roll") is not None else None
-        date = str(data.get("date")) if data.get("date") is not None else None
-        elevation = (
-            float(data.get("elevation", 0.0))
-            if data.get("elevation") is not None
-            else None
-        )
+        def _require_float(value: object, field_name: str) -> float:
+            if value is None:
+                raise ValueError(
+                    f"Metadata payload missing required '{field_name}' for pano_id={pano_id}"
+                )
+            try:
+                return float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Invalid {field_name} value for pano_id={pano_id}: {value!r}"
+                ) from exc
+
+        def _optional_float(value: object, field_name: str) -> Optional[float]:
+            if value is None:
+                return None
+            try:
+                return float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Invalid {field_name} value for pano_id={pano_id}: {value!r}"
+                ) from exc
+
+        lat = _require_float(data.get("lat"), "lat")
+        lon = _require_float(data.get("lon"), "lon")
+        heading = _require_float(data.get("heading"), "heading")
+        pitch = _optional_float(data.get("pitch"), "pitch")
+        roll = _optional_float(data.get("roll"), "roll")
+        elevation = _optional_float(data.get("elevation"), "elevation")
+        date_value = data.get("date")
+        date = str(date_value) if date_value is not None else None
 
         return PanoramaMetadata(
             pano_id=pano_id,

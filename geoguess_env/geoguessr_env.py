@@ -1,5 +1,6 @@
 import logging
 import math
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import gymnasium as gym
@@ -8,7 +9,11 @@ import pygame
 from gymnasium import spaces
 
 from .action_parser import ActionParser
-from .asset_manager import AssetManager, RootPanoramaUnavailableError
+from .asset_manager import (
+    AssetManager,
+    PanoramaGraphResult,
+    RootPanoramaUnavailableError,
+)
 from .config import GeoGuessrConfig
 from .geometry_utils import GeometryUtils
 from .providers.google_streetview import GoogleStreetViewProvider
@@ -16,7 +21,7 @@ from .providers.google_streetview import GoogleStreetViewProvider
 logger = logging.getLogger(__name__)
 
 
-class GeoGuessrEnv(gym.Env):
+class GeoGuessrEnv(gym.Env[Dict[str, np.ndarray], Dict[str, Any]]):
     """
     GeoGuessr-style Gymnasium environment for panorama navigation.
 
@@ -31,7 +36,9 @@ class GeoGuessrEnv(gym.Env):
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, config: Optional[Dict] = None, render_mode=None):
+    def __init__(
+        self, config: Optional[Dict[str, Any]] = None, render_mode: Optional[str] = None
+    ) -> None:
         """
         Initialize the GeoGuessr environment.
 
@@ -55,7 +62,7 @@ class GeoGuessrEnv(gym.Env):
 
         self.asset_manager = AssetManager(
             provider=self.provider,
-            cache_root=self.config.cache_root,
+            cache_root=Path(self.config.cache_root),
             max_connected_panoramas=self.config.nav_config.max_connected_panoramas,
         )
 
@@ -67,7 +74,7 @@ class GeoGuessrEnv(gym.Env):
 
         # Initialize environment state
         self.pano_root_id: Optional[str] = None
-        self._pano_graph: Dict[str, Dict] = {}
+        self._pano_graph: Dict[str, Dict[str, Any]] = {}
         self._image_width = self.config.render_config.image_width
         self._image_height = self.config.render_config.image_height
 
@@ -90,11 +97,9 @@ class GeoGuessrEnv(gym.Env):
         self._clock = None
         self._font = None
 
-    def _setup_spaces(self):
-        """
-        Set up observation and action spaces based on configuration.
-        """
-        # Observation space: dictionary with image
+    def _setup_spaces(self) -> None:
+        """Configure observation and action spaces based on render settings."""
+
         self.observation_space = spaces.Dict(
             {
                 "image": spaces.Box(
@@ -106,22 +111,19 @@ class GeoGuessrEnv(gym.Env):
             }
         )
 
-        # Action space: click and answer operations
         click_space = spaces.Box(
             low=np.array([0, 0], dtype=np.int32),
             high=np.array([self._image_width, self._image_height], dtype=np.int32),
             shape=(2,),
             dtype=np.int32,
         )
-        # Store click bounds for action validation
-        self._click_low = [0, 0]
-        self._click_high = [self._image_width, self._image_height]
         answer_space = spaces.Box(
             low=np.array([-90.0, -180.0], dtype=np.float32),
             high=np.array([90.0, 180.0], dtype=np.float32),
             shape=(2,),
             dtype=np.float32,
         )
+
         self.action_space = spaces.Dict(
             {
                 "op": spaces.Discrete(2),
@@ -130,121 +132,32 @@ class GeoGuessrEnv(gym.Env):
             }
         )
 
-    def _get_info(self):
-        """
-        Get environment info dictionary.
-        """
-        links_with_screen = self._compute_link_screens()
+    def _get_info(self) -> Dict[str, Any]:
+        """Assemble the metadata dictionary returned alongside observations."""
+
+        heading_deg = math.degrees(self._heading_rad) % 360.0
         return {
             "provider": self.provider.provider_name,
             "pano_id": self.current_pano_id,
             "gt_lat": self.current_lat,
             "gt_lon": self.current_lon,
             "steps": self._steps,
-            # Provide both yaw_deg (preferred) and heading_deg (compat) in degrees
-            "pose": {
-                "yaw_deg": math.degrees(self._heading_rad) % 360.0,
-                "heading_deg": math.degrees(self._heading_rad) % 360.0,
-            },
-            "links": links_with_screen,
+            "pose": {"yaw_deg": heading_deg, "heading_deg": heading_deg},
+            "links": self._compute_link_screens(),
         }
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
-    ):
-        """
-        Reset the environment to start a new episode.
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        """Reset the environment to start a fresh navigation episode."""
 
-        Args:
-            seed: Random seed for episode generation
-            options: Additional reset options (unused)
-
-        Returns:
-            Tuple of (observation, info)
-        """
-        # Initialize random number generator
         if seed is None and self.config.seed is not None:
             seed = self.config.seed
         super().reset(seed=seed, options=options)
-        # Capture the RNG configured by the base class for deterministic sampling
-        self._episode_seed = self.np_random_seed
-        self._episode_rng = self.np_random
+        self._capture_episode_rng()
 
-        # Retry logic for finding valid panorama location
-        max_location_attempts = 5
-        graph_result = None
-
-        for location_attempt in range(max_location_attempts):
-            # Determine starting coordinates with retry logic for geofence sampling
-            if self.config.geofence:
-                lat, lon = self._sample_valid_coordinates_from_geofence()
-            else:
-                # For non-geofence mode, only try once
-                if location_attempt > 0:
-                    raise ValueError(
-                        f"Failed to load panorama data for {self.config.input_lat}, {self.config.input_lon}: "
-                        "Root panorama unavailable and no geofence configured for retry"
-                    )
-                lat, lon = self.config.input_lat, self.config.input_lon
-
-            if lat is None or lon is None:
-                raise ValueError(
-                    "No starting coordinates provided (either input_lat/lon or geofence required)"
-                )
-
-            # Get or fetch panorama graph using asset manager
-            # Round coordinates to 6 decimal places for consistent cache handling
-            lat = round(lat, 6)
-            lon = round(lon, 6)
-
-            try:
-                graph_result = self.asset_manager.prepare_graph(
-                    root_lat=lat, root_lon=lon
-                )
-
-                if not graph_result.graph:
-                    raise ValueError(
-                        f"No panorama graph available for coordinates {lat}, {lon}"
-                    )
-
-                if graph_result.missing_assets:
-                    missing = ", ".join(sorted(graph_result.missing_assets))
-                    raise ValueError(
-                        f"Missing cached assets for panoramas ({missing}) at {lat}, {lon}"
-                    )
-
-                # Success - break out of retry loop
-                break
-
-            except RootPanoramaUnavailableError as e:
-                logger.warning(
-                    "Attempt %d/%d: Root panorama unavailable at (%f, %f): %s",
-                    location_attempt + 1,
-                    max_location_attempts,
-                    lat,
-                    lon,
-                    e,
-                )
-                if location_attempt == max_location_attempts - 1:
-                    raise ValueError(
-                        f"Failed to find valid panorama location after {max_location_attempts} attempts"
-                    )
-                # Continue to next iteration to sample new coordinates
-                continue
-
-            except Exception as e:
-                # Other errors are not retryable
-                raise ValueError(f"Failed to load panorama data for {lat}, {lon}: {e}")
-
-        if graph_result is None:
-            raise ValueError(
-                f"Failed to prepare panorama graph after {max_location_attempts} attempts"
-            )
-
-        # Store prepared graph
+        graph_result = self._prepare_graph_with_retries()
         self._pano_graph = graph_result.graph
-
-        # Find root panorama ID (first key in graph)
         self.pano_root_id = graph_result.root_id
 
         root_metadata = self._pano_graph.get(self.pano_root_id, {})
@@ -255,44 +168,123 @@ class GeoGuessrEnv(gym.Env):
             root_date or "unknown",
         )
 
-        # Verify image availability once to enforce runtime invariant
-        for pano_id in self._pano_graph.keys():
+        self._validate_graph_assets()
+
+        self._steps = 0
+        self._set_current_pano(self.pano_root_id)
+        self._heading_rad = self._get_heading_for_pano(self.current_pano_id)
+
+        return self._get_observation(), self._get_info()
+
+    def _capture_episode_rng(self) -> None:
+        """Persist the RNG set up by the Gymnasium base class for later use."""
+
+        self._episode_seed = self.np_random_seed
+        self._episode_rng = self.np_random
+
+    def _prepare_graph_with_retries(self) -> PanoramaGraphResult:
+        """Load the panorama graph, retrying when the root panorama is unavailable."""
+
+        max_attempts = 5
+        last_unavailable_error: Optional[RootPanoramaUnavailableError] = None
+
+        for attempt in range(max_attempts):
+            lat, lon = self._select_start_coordinates(attempt)
+            lat = round(lat, 6)
+            lon = round(lon, 6)
+
+            try:
+                graph_result = self.asset_manager.prepare_graph(
+                    root_lat=lat, root_lon=lon
+                )
+            except RootPanoramaUnavailableError as exc:
+                last_unavailable_error = exc
+                logger.warning(
+                    "Attempt %d/%d: Root panorama unavailable at (%f, %f): %s",
+                    attempt + 1,
+                    max_attempts,
+                    lat,
+                    lon,
+                    exc,
+                )
+                continue
+            except Exception as exc:  # pragma: no cover - defensive guardrail
+                raise ValueError(
+                    f"Failed to load panorama data for {lat}, {lon}: {exc}"
+                ) from exc
+
+            if not graph_result.graph:
+                raise ValueError(
+                    f"No panorama graph available for coordinates {lat}, {lon}"
+                )
+
+            if graph_result.missing_assets:
+                missing = ", ".join(sorted(graph_result.missing_assets))
+                raise ValueError(
+                    f"Missing cached assets for panoramas ({missing}) at {lat}, {lon}"
+                )
+
+            return graph_result
+
+        if last_unavailable_error is not None:
+            raise ValueError(
+                f"Failed to find valid panorama location after {max_attempts} attempts"
+            ) from last_unavailable_error
+
+        raise ValueError(
+            f"Failed to prepare panorama graph after {max_attempts} attempts"
+        )
+
+    def _select_start_coordinates(self, attempt: int) -> Tuple[float, float]:
+        """Determine starting coordinates for the episode."""
+
+        if self.config.geofence:
+            return self._sample_valid_coordinates_from_geofence()
+
+        if attempt > 0:
+            raise ValueError(
+                f"Failed to load panorama data for {self.config.input_lat}, {self.config.input_lon}: "
+                "Root panorama unavailable and no geofence configured for retry"
+            )
+
+        lat = self.config.input_lat
+        lon = self.config.input_lon
+        if lat is None or lon is None:
+            raise ValueError(
+                "No starting coordinates provided (either input_lat/lon or geofence required)"
+            )
+
+        return float(lat), float(lon)
+
+    def _validate_graph_assets(self) -> None:
+        """Ensure images for the prepared graph are present in the cache."""
+
+        for pano_id in self._pano_graph:
             if self.asset_manager.get_image_array(pano_id) is None:
                 raise RuntimeError(
                     f"Panorama image missing from cache for {pano_id} after preparation"
                 )
 
-        # Reset episode state
-        self._steps = 0
-        self._set_current_pano(self.pano_root_id)
+    def _get_heading_for_pano(self, pano_id: Optional[str]) -> float:
+        """Return the stored heading for the given panorama, defaulting to zero."""
 
-        # Initialize camera heading
-        node = self._pano_graph.get(self.current_pano_id, {})
-        heading = node.get("heading", 0.0)
-        self._heading_rad = float(heading) if isinstance(heading, (int, float)) else 0.0
+        if pano_id is None:
+            return 0.0
 
-        # Get initial observation and info
-        obs = self._get_observation()
-        info = self._get_info()
-        return obs, info
+        heading = self._pano_graph.get(pano_id, {}).get("heading", 0.0)
+        return float(heading) if isinstance(heading, (int, float)) else 0.0
 
-    def step(self, action):
-        """
-        Execute one environment step.
+    def step(
+        self, action: Dict[str, Any]
+    ) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
+        """Execute one environment step using a click or answer action."""
 
-        Args:
-            action: Action to execute (click or answer)
-
-        Returns:
-            Tuple of (observation, reward, terminated, truncated, info)
-        """
         self._steps += 1
 
-        # Parse action using robust action parser
         try:
             op, values = self.action_parser.parse_action(action)
-        except Exception as e:
-            print(f"Action parsing failed: {e}, using fallback")
+        except Exception as exc:  # pragma: no cover - defensive guardrail
+            logger.warning("Action parsing failed (%s); using fallback parser", exc)
             op, values = self.action_parser.parse_with_fallback(action)
 
         terminated = False
@@ -300,126 +292,124 @@ class GeoGuessrEnv(gym.Env):
         reward = 0.0
 
         if op == 0:
-            # Click action: navigate to link
             x, y = values
-            print(f"CLICK: x: {x}, y: {y}")
+            logger.debug("Handling click at (%.2f, %.2f)", x, y)
             self._handle_click(x, y)
         elif op == 1:
-            # Answer action: submit coordinate guess
             guess_lat, guess_lon = values
             reward = GeometryUtils.compute_answer_reward(
                 guess_lat, guess_lon, self.current_lat or 0.0, self.current_lon or 0.0
             )
-            print(f"ANSWER: {guess_lat}, {guess_lon} (reward: {reward:.4f})")
+            logger.debug(
+                "Answer submitted lat=%.6f lon=%.6f reward=%.4f",
+                guess_lat,
+                guess_lon,
+                reward,
+            )
             terminated = True
+        else:
+            logger.error("Received unsupported op code: %s", op)
 
-        # Check for truncation due to max steps
         if not terminated and self._steps >= self.config.max_steps:
             truncated = True
 
-        # Get observation and info
         obs = self._get_observation()
         info = self._get_info()
 
-        # Add answer-specific info
         if op == 1:
-            info["guess_lat"] = float(values[0])
-            info["guess_lon"] = float(values[1])
+            guess_lat = float(values[0])
+            guess_lon = float(values[1])
+            info["guess_lat"] = guess_lat
+            info["guess_lon"] = guess_lon
 
             if self.current_lat is not None and self.current_lon is not None:
-                distance_km = GeometryUtils.haversine_distance(
+                info["distance_km"] = GeometryUtils.haversine_distance(
                     self.current_lat,
                     self.current_lon,
-                    float(values[0]),
-                    float(values[1]),
+                    guess_lat,
+                    guess_lon,
                 )
-                info["distance_km"] = distance_km
             else:
-                info["distance_km"] = float("inf")
+                info["distance_km"] = math.inf
 
             info["score"] = reward
 
         return obs, reward, terminated, truncated, info
 
     # --- Rendering ---
-    def render(self, mode=None):
-        # Allow override via argument; fall back to configured render_mode
-        render_mode = (
-            mode if mode is not None else self.config.render_config.render_mode
-        )
+    def render(self, mode: Optional[str] = None) -> Optional[np.ndarray]:
+        """Render the current frame either for human viewing or as an RGB array."""
+
+        render_mode = mode or self.config.render_config.render_mode
         if render_mode == "rgb_array":
             return self._get_observation()["image"]
-        if render_mode == "human":
-            if self._screen is None:
-                pygame.init()
-                self._screen = pygame.display.set_mode(
-                    (self._image_width, self._image_height)
-                )
-                pygame.display.set_caption("GeoGuessrEnv")
-                self._clock = pygame.time.Clock()
-                if self._font is None:
-                    try:
-                        self._font = pygame.font.SysFont("Arial", 14)
-                    except Exception:
-                        self._font = pygame.font.Font(None, 14)
 
-            # Pump events to keep window responsive
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pass
-
-            frame = self._get_observation()["image"]
-            # pygame expects (width, height, 3) and surfaces are transposed
-            surf = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
-            self._screen.blit(surf, (0, 0))
-
-            # Overlay link centers and pano ids for human debugging only
-            links = self._compute_link_screens()
-            radius = int(self.config.nav_config.arrow_hit_radius_px)
-            for link in links:
-                cx, cy = link["screen_xy"]
-                # Draw filled red circle
-                pygame.draw.circle(
-                    self._screen, (255, 0, 0), (int(cx), int(cy)), radius, 0
-                )
-                # Draw white outline
-                pygame.draw.circle(
-                    self._screen, (255, 255, 255), (int(cx), int(cy)), radius, 2
-                )
-                # Draw pano id below (or above if near bottom)
-                if self._font is not None:
-                    text_surf = self._font.render(
-                        str(link["id"]), True, (255, 255, 255)
-                    )
-                    text_rect = text_surf.get_rect()
-                    text_rect.centerx = int(cx)
-                    text_rect.top = int(cy) + radius + 4
-                    if text_rect.bottom > self._image_height:
-                        text_rect.bottom = int(cy) - radius - 4
-                        text_rect.top = text_rect.bottom - text_rect.height
-                    # simple shadow for readability
-                    shadow = text_rect.copy()
-                    shadow.x += 1
-                    shadow.y += 1
-                    self._screen.blit(text_surf, shadow)
-                    self._screen.blit(text_surf, text_rect)
-            pygame.display.flip()
-            # Cap to metadata fps
-            if self._clock is not None:
-                self._clock.tick(self.metadata.get("render_fps", 4))
+        if render_mode != "human":
             return None
-        # If no render mode specified, do nothing
+
+        self._initialize_human_renderer()
+        pygame.event.pump()
+
+        if self._screen is None:
+            logger.warning("Human renderer surface unavailable; skipping frame draw")
+            return None
+
+        frame = self._get_observation()["image"]
+        surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+        self._screen.blit(surface, (0, 0))
+
+        radius = int(self.config.nav_config.arrow_hit_radius_px)
+        for link in self._compute_link_screens():
+            cx, cy = map(int, link["screen_xy"])
+            pygame.draw.circle(self._screen, (255, 0, 0), (cx, cy), radius, 0)
+            pygame.draw.circle(self._screen, (255, 255, 255), (cx, cy), radius, 2)
+            if self._font is None:
+                continue
+            text_surface = self._font.render(str(link["id"]), True, (255, 255, 255))
+            text_rect = text_surface.get_rect()
+            text_rect.centerx = cx
+            text_rect.top = cy + radius + 4
+            if text_rect.bottom > self._image_height:
+                text_rect.bottom = cy - radius - 4
+                text_rect.top = text_rect.bottom - text_rect.height
+            shadow_rect = text_rect.copy()
+            shadow_rect.x += 1
+            shadow_rect.y += 1
+            self._screen.blit(text_surface, shadow_rect)
+            self._screen.blit(text_surface, text_rect)
+
+        pygame.display.flip()
+        if self._clock is not None:
+            self._clock.tick(self.metadata.get("render_fps", 4))
+
         return None
 
-    def close(self):
+    def _initialize_human_renderer(self) -> None:
+        """Lazy-initialize pygame surfaces required for human rendering."""
+
+        if self._screen is not None:
+            return
+
+        pygame.init()
+        self._screen = pygame.display.set_mode((self._image_width, self._image_height))
+        pygame.display.set_caption("GeoGuessrEnv")
+        self._clock = pygame.time.Clock()
+        if self._font is None:
+            try:
+                self._font = pygame.font.SysFont("Arial", 14)
+            except Exception:  # pragma: no cover - fallback for headless systems
+                self._font = pygame.font.Font(None, 14)
+
+    def close(self) -> None:
         if self._screen is not None:
             try:
                 pygame.display.quit()
                 pygame.quit()
-            except Exception:
+            except Exception:  # pragma: no cover - defensive guardrail
                 pass
             self._screen = None
             self._clock = None
+            self._font = None
 
     # --- Geofence sampling helpers ---
     def _get_episode_rng(self) -> np.random.Generator:
@@ -429,59 +419,102 @@ class GeoGuessrEnv(gym.Env):
 
     def _sample_from_geofence(self) -> Tuple[float, float]:
         """Sample coordinates from the configured geofence using the episode RNG."""
+
         if not self.config.geofence:
             raise ValueError("No geofence configured for sampling")
 
         rng = self._get_episode_rng()
-
         geofence = self.config.geofence
+
         if geofence.type == "circle":
+            if geofence.center is None:
+                raise ValueError(
+                    "Circle geofence requires a center with 'lat' and 'lon' values"
+                )
+            center_lat, center_lon = self._normalize_lat_lon(
+                geofence.center,
+                "Circle geofence center must provide 'lat' and 'lon' values",
+            )
+            radius_km = geofence.radius_km
+            if radius_km is None:
+                raise ValueError("Circle geofence requires a 'radius_km' value")
             return GeometryUtils.sample_circular_geofence(
-                center_lat=geofence.center["lat"],
-                center_lon=geofence.center["lon"],
-                radius_km=geofence.radius_km,
+                center_lat=center_lat,
+                center_lon=center_lon,
+                radius_km=float(radius_km),
                 rng=rng,
             )
-        elif geofence.type == "polygon":
+
+        if geofence.type == "polygon":
+            polygon_points = geofence.polygon
+            if not polygon_points:
+                raise ValueError("Polygon geofence requires a non-empty 'polygon' list")
+            normalized_polygon = [
+                self._normalize_lat_lon(
+                    point, "Polygon geofence points must provide 'lat' and 'lon' values"
+                )
+                for point in polygon_points
+            ]
+            if len(normalized_polygon) < 3:
+                raise ValueError("Polygon geofence requires at least three points")
             return GeometryUtils.sample_polygon_geofence(
-                polygon=[(p[0], p[1]) for p in geofence.polygon], rng=rng
+                polygon=normalized_polygon, rng=rng
             )
-        else:
-            raise ValueError(f"Unsupported geofence type: {geofence.type}")
+
+        raise ValueError(f"Unsupported geofence type: {geofence.type}")
 
     def _sample_valid_coordinates_from_geofence(self) -> Tuple[float, float]:
-        """Sample geofence coordinates with retries until a cached panorama is found.
+        """Sample geofence coordinates with retries until a cached panorama is found."""
 
-        Raises:
-            ValueError: If no valid coordinates found after max attempts
-        """
         max_attempts = 10
 
         for attempt in range(max_attempts):
             lat, lon = self._sample_from_geofence()
-
-            # Round coordinates to check if panorama exists
             rounded_lat = round(lat, 6)
             rounded_lon = round(lon, 6)
 
-            # Check if we can find a panorama at this location
             try:
                 pano_id = self.asset_manager.resolve_nearest_panorama(
                     rounded_lat, rounded_lon
                 )
                 if pano_id:
-                    print(
-                        f"Found valid coordinates after {attempt + 1} attempts: {rounded_lat}, {rounded_lon}"
+                    logger.debug(
+                        "Found valid coordinates after %d attempts: %.6f, %.6f",
+                        attempt + 1,
+                        rounded_lat,
+                        rounded_lon,
                     )
                     return rounded_lat, rounded_lon
-            except Exception as e:
-                print(
-                    f"Attempt {attempt + 1}: No panorama at {rounded_lat}, {rounded_lon}: {e}"
+            except Exception as exc:  # pragma: no cover - defensive guardrail
+                logger.debug(
+                    "Attempt %d: no panorama at %.6f, %.6f (%s)",
+                    attempt + 1,
+                    rounded_lat,
+                    rounded_lon,
+                    exc,
                 )
 
         raise ValueError(
             f"Could not find valid coordinates with panoramas after {max_attempts} attempts"
         )
+
+    @staticmethod
+    def _normalize_lat_lon(value: Any, error_message: str) -> Tuple[float, float]:
+        """Extract latitude and longitude from supported container types."""
+
+        if isinstance(value, dict):
+            lat = value.get("lat")
+            lon = value.get("lon")
+        elif isinstance(value, (tuple, list)) and len(value) >= 2:
+            lat, lon = value[0], value[1]
+        else:
+            lat = getattr(value, "lat", None)
+            lon = getattr(value, "lon", None)
+
+        if lat is None or lon is None:
+            raise ValueError(error_message)
+
+        return float(lat), float(lon)
 
     # --- Helpers ---
 
@@ -503,11 +536,18 @@ class GeoGuessrEnv(gym.Env):
         """
         Get current observation (panorama image).
         """
+        current_id = self.current_pano_id
+
         if self._current_image is None:
-            image_array = self.asset_manager.get_image_array(self.current_pano_id)
+            if current_id is None:
+                raise RuntimeError(
+                    "Missing panorama image and no current pano ID to reload it"
+                )
+
+            image_array = self.asset_manager.get_image_array(current_id)
             if image_array is None:
                 raise RuntimeError(
-                    f"Missing panorama image for {self.current_pano_id} during observation"
+                    f"Missing panorama image for {current_id} during observation"
                 )
 
             # Copy to decouple environment state from the shared cache
@@ -520,35 +560,23 @@ class GeoGuessrEnv(gym.Env):
         """
         Compute screen-space centers for current links using GeometryUtils.
         """
-        if self.current_pano_id is None:
+        current_pano_id = self.current_pano_id
+        if current_pano_id is None:
             return []
 
-        node = self._pano_graph.get(self.current_pano_id, {})
-        pano_heading = node.get("heading", 0.0)
-        current_heading_rad = self._heading_rad
-        # Normalize link directions: metadata stores radians; pass through as radians.
         normalized_links: List[Dict[str, Any]] = []
         for link in self.current_links or []:
+            direction_value = link.get("direction", 0.0)
             try:
-                raw_dir = float(link.get("direction", 0.0))
-            except Exception:
-                raw_dir = 0.0
-
-            # Direction is provided in radians in metadata; no conversion here.
-            direction_rad = float(raw_dir)
-            normalized_links.append(
-                {
-                    "id": link.get("id"),
-                    "direction": direction_rad,
-                }
-            )
+                direction_rad = float(direction_value)
+            except (TypeError, ValueError):
+                direction_rad = 0.0
+            normalized_links.append({"id": link.get("id"), "direction": direction_rad})
 
         return GeometryUtils.compute_link_screen_positions(
             links=normalized_links,
-            pano_heading_rad=float(pano_heading)
-            if isinstance(pano_heading, (int, float))
-            else 0.0,
-            current_heading_rad=current_heading_rad,
+            pano_heading_rad=self._get_heading_for_pano(current_pano_id),
+            current_heading_rad=self._heading_rad,
             image_width=self._image_width,
             image_height=self._image_height,
         )
@@ -560,6 +588,7 @@ class GeoGuessrEnv(gym.Env):
         # Get screen links
         screen_links = self._compute_link_screens()
         if not screen_links:
+            logger.debug("Click ignored because no outgoing links are available")
             return
 
         # Find clicked link using GeometryUtils
@@ -572,20 +601,28 @@ class GeoGuessrEnv(gym.Env):
         )
 
         if clicked_link is None:
+            logger.debug("Click at (%.2f, %.2f) did not hit a link", x, y)
             return  # No valid link clicked
 
         # Navigate to the selected link
-        next_id = clicked_link["id"]
+        next_id = clicked_link.get("id")
+        if not next_id:
+            logger.debug("Clicked link missing identifier; ignoring")
+            return
 
         # Check if the target pano exists in the graph before navigating
         if next_id not in self._pano_graph:
             # Skip navigation if target pano is not loaded in the graph
+            logger.debug("Link %s not present in preloaded graph; ignoring", next_id)
             return
 
         # Move to neighbor pano
         self._set_current_pano(next_id)
         # Update camera heading to the new pano's stored heading (already radians)
-        node = self._pano_graph.get(self.current_pano_id, {})
+        current_id = self.current_pano_id
+        if current_id is None:
+            raise RuntimeError("Current pano ID unset after navigation")
+        node = self._pano_graph.get(current_id, {})
         heading = node.get("heading")
         if isinstance(heading, (int, float)):
             self._heading_rad = float(heading)

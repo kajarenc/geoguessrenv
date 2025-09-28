@@ -256,14 +256,14 @@ class GeoGuessrConfig:
     @property
     def images_dir(self) -> Path:
         """Get images cache directory."""
-        return self.cache_root / "images"
+        return Path(self.cache_root) / "images"
 
     @property
     def metadata_dir(self) -> Path:
         """Get metadata cache directory."""
-        return self.cache_root / "metadata"
+        return Path(self.cache_root) / "metadata"
 
     @property
     def replays_dir(self) -> Path:
         """Get replays cache directory."""
-        return self.cache_root / "replays"
+        return Path(self.cache_root) / "replays"

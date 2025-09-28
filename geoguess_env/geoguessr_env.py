@@ -6,7 +6,7 @@ import math
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, SupportsFloat, cast
+from typing import TYPE_CHECKING, Any
 
 import gymnasium as gym
 import numpy as np
@@ -36,7 +36,7 @@ if TYPE_CHECKING:  # pragma: no cover - import only for static analysis
 logger = logging.getLogger(__name__)
 
 
-class GeoGuessrEnv(gym.Env[Observation, dict[str, Any]]):
+class GeoGuessrEnv(gym.Env):
     """
     GeoGuessr-style Gymnasium environment for panorama navigation.
 
@@ -129,7 +129,7 @@ class GeoGuessrEnv(gym.Env[Observation, dict[str, Any]]):
                 )
             }
         )
-        self.observation_space = cast(spaces.Space[Observation], observation_space)
+        self.observation_space = observation_space
 
         click_space = spaces.Box(
             low=np.array([0, 0], dtype=np.int32),
@@ -151,7 +151,7 @@ class GeoGuessrEnv(gym.Env[Observation, dict[str, Any]]):
                 "answer": answer_space,
             }
         )
-        self.action_space = cast(spaces.Space[dict[str, Any]], action_space)
+        self.action_space = action_space
 
     def _get_info(self) -> EnvInfo:
         """Assemble the metadata dictionary returned alongside observations."""
@@ -173,7 +173,7 @@ class GeoGuessrEnv(gym.Env[Observation, dict[str, Any]]):
         *,
         seed: int | None = None,
         options: dict[str, Any] | None = None,
-    ) -> tuple[Observation, dict[str, Any]]:
+    ) -> tuple[Observation, EnvInfo]:
         """Reset the environment to start a fresh navigation episode."""
 
         if seed is None and self.config.seed is not None:
@@ -202,7 +202,7 @@ class GeoGuessrEnv(gym.Env[Observation, dict[str, Any]]):
         self._set_current_pano(self.pano_root_id)
         self._heading_rad = self._get_heading_for_pano(self.current_pano_id)
 
-        return self._get_observation(), cast(dict[str, Any], self._get_info())
+        return self._get_observation(), self._get_info()
 
     def _capture_episode_rng(self) -> None:
         """Persist the RNG set up by the Gymnasium base class for later use."""
@@ -306,7 +306,7 @@ class GeoGuessrEnv(gym.Env[Observation, dict[str, Any]]):
 
     def step(
         self, action: Mapping[str, object] | str
-    ) -> tuple[Observation, SupportsFloat, bool, bool, dict[str, Any]]:
+    ) -> tuple[Observation, float, bool, bool, EnvInfo]:
         """Execute one environment step using a click or answer action."""
 
         self._steps += 1
@@ -371,7 +371,7 @@ class GeoGuessrEnv(gym.Env[Observation, dict[str, Any]]):
 
             info["score"] = float(reward)
 
-        return obs, reward, terminated, truncated, cast(dict[str, Any], info)
+        return obs, reward, terminated, truncated, info
 
     # --- Rendering ---
     def render(self, mode: str | None = None) -> ObservationArray | None:
@@ -564,9 +564,9 @@ class GeoGuessrEnv(gym.Env[Observation, dict[str, Any]]):
         lon: float | None
 
         if isinstance(value, Mapping):
-            mapping_value = cast(Mapping[str, object], value)
-            lat_candidate = mapping_value.get("lat")
-            lon_candidate = mapping_value.get("lon")
+            mapping_dict = dict(value)
+            lat_candidate = mapping_dict.get("lat")
+            lon_candidate = mapping_dict.get("lon")
             lat = (
                 float(lat_candidate)
                 if isinstance(lat_candidate, (int, float))

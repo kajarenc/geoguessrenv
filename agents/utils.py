@@ -4,7 +4,7 @@ import base64
 import hashlib
 import io
 import json
-import os
+from pathlib import Path
 from typing import Any, Dict, List
 
 from PIL import Image
@@ -38,26 +38,30 @@ def compute_prompt_fingerprint(
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-def cache_get(cache_dir: str, key: str) -> Dict[str, Any] | None:
-    if not cache_dir:
+def cache_get(cache_dir: Path | str | None, key: str) -> Dict[str, Any] | None:
+    if cache_dir is None:
         return None
-    os.makedirs(cache_dir, exist_ok=True)
-    path = os.path.join(cache_dir, f"{key}.json")
-    if not os.path.isfile(path):
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / f"{key}.json"
+    if not path.is_file():
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with path.open("r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None
 
 
-def cache_put(cache_dir: str, key: str, value: Dict[str, Any]) -> None:
-    if not cache_dir:
+def cache_put(cache_dir: Path | str | None, key: str, value: Dict[str, Any]) -> None:
+    if cache_dir is None:
         return
-    os.makedirs(cache_dir, exist_ok=True)
-    path = os.path.join(cache_dir, f"{key}.json")
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / f"{key}.json"
+    tmp = path.with_suffix(".json.tmp")
+    with tmp.open("w", encoding="utf-8") as f:
         json.dump(value, f, ensure_ascii=False)
-    os.replace(tmp, path)
+    tmp.replace(path)

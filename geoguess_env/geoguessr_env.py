@@ -149,7 +149,9 @@ class GeoGuessrEnv(gym.Env):
             "links": links_with_screen,
         }
 
-    def reset(self, seed=None, options=None):
+    def reset(
+        self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
+    ):
         """
         Reset the environment to start a new episode.
 
@@ -163,7 +165,7 @@ class GeoGuessrEnv(gym.Env):
         # Initialize random number generator
         if seed is None and self.config.seed is not None:
             seed = self.config.seed
-        super().reset(seed=seed)
+        super().reset(seed=seed, options=options)
         # Capture the RNG configured by the base class for deterministic sampling
         self._episode_seed = self.np_random_seed
         self._episode_rng = self.np_random
@@ -518,6 +520,9 @@ class GeoGuessrEnv(gym.Env):
         """
         Compute screen-space centers for current links using GeometryUtils.
         """
+        if self.current_pano_id is None:
+            return []
+
         node = self._pano_graph.get(self.current_pano_id, {})
         pano_heading = node.get("heading", 0.0)
         current_heading_rad = self._heading_rad

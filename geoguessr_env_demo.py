@@ -1,5 +1,5 @@
 import logging
-import os
+from pathlib import Path
 
 import gymnasium as gym
 from gymnasium.envs.registration import register
@@ -24,8 +24,8 @@ def main() -> None:
     ensure_registered()
 
     # Use cache directory aligned with TaskDescription.md spec
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    cache_root = os.path.join(script_dir, "cache")
+    script_path = Path(__file__).resolve()
+    cache_root = script_path.parent / "cache"
 
     input_lat, input_lon = 51.481610, -0.163400
     env = gym.make(
@@ -33,7 +33,7 @@ def main() -> None:
         render_mode="human",
         config={
             "provider_config": {"provider": "gsv"},
-            "cache_root": cache_root,
+            "cache_root": str(cache_root),
             "input_lat": input_lat,
             "input_lon": input_lon,
         },

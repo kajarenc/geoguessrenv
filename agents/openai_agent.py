@@ -133,17 +133,19 @@ class OpenAIVisionAgent(BaseAgent):
 
     def _get_cached_response(self, context: Dict[str, Any]) -> Dict[str, Any] | None:
         fingerprint = context.get("fingerprint")
-        if not (self.config.cache_dir and fingerprint):
+        cache_dir = self.config.cache_dir
+        if not (cache_dir and fingerprint):
             return None
-        return cache_get(self.config.cache_dir, fingerprint)
+        return cache_get(cache_dir, fingerprint)
 
     def _store_cached_response(
         self, context: Dict[str, Any], response: Dict[str, Any]
     ) -> None:
         fingerprint = context.get("fingerprint")
-        if not (self.config.cache_dir and fingerprint and response):
+        cache_dir = self.config.cache_dir
+        if not (cache_dir and fingerprint and response):
             return
-        cache_put(self.config.cache_dir, fingerprint, response)
+        cache_put(cache_dir, fingerprint, response)
 
     def _build_messages(
         self, context: Dict[str, Any]

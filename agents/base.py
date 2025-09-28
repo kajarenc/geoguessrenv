@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 
@@ -19,7 +20,11 @@ class AgentConfig:
     image_width: int = 1024
     image_height: int = 512
     request_timeout_s: float = 60.0
-    cache_dir: Optional[str] = None
+    cache_dir: Optional[Path] = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.cache_dir, str):
+            self.cache_dir = Path(self.cache_dir)
 
 
 class BaseAgent:

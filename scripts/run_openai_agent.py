@@ -1,6 +1,6 @@
 import argparse
 import logging
-import os
+from pathlib import Path
 
 import gymnasium as gym
 from gymnasium.envs.registration import register
@@ -48,9 +48,9 @@ def main() -> None:
         pass
     ensure_registered()
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    cache_root = args.cache_root or os.path.join(project_root, "cache")
+    script_path = Path(__file__).resolve()
+    project_root = script_path.parent.parent
+    cache_root = Path(args.cache_root) if args.cache_root else project_root / "cache"
 
     render_config = {
         "image_width": args.image_width,
@@ -60,7 +60,7 @@ def main() -> None:
         render_config["render_mode"] = "human"
 
     env_config = {
-        "cache_root": cache_root,
+        "cache_root": str(cache_root),
         "input_lat": args.input_lat,
         "input_lon": args.input_lon,
         "render_config": render_config,
@@ -72,13 +72,15 @@ def main() -> None:
         config=env_config,
     )
 
+    cache_dir = Path(args.cache_dir) if args.cache_dir else None
+
     agent_cfg = AgentConfig(
         model=args.model,
         temperature=args.temperature,
         max_nav_steps=args.max_nav_steps,
         image_width=args.image_width,
         image_height=args.image_height,
-        cache_dir=args.cache_dir,
+        cache_dir=cache_dir,
     )
     agent = OpenAIVisionAgent(agent_cfg)
 

@@ -4,7 +4,7 @@ import argparse
 import csv
 import json
 import logging
-import os
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import gymnasium as gym
@@ -72,8 +72,10 @@ def load_geofence(geofence_path: Optional[str]) -> Optional[Dict]:
     if not geofence_path:
         return None
 
+    geofence_path_obj = Path(geofence_path)
+
     try:
-        with open(geofence_path, "r") as f:
+        with geofence_path_obj.open("r", encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"Warning: Could not load geofence from {geofence_path}: {e}")
@@ -94,10 +96,11 @@ def run_episodes(args) -> List[Dict]:
     # Create base environment config
     provider_config = {"provider": args.provider} if args.provider else {}
 
+    cache_root = Path(args.cache)
     base_env_config = {
         "provider_config": provider_config,
         "geofence": geofence,
-        "cache_root": args.cache,
+        "cache_root": str(cache_root),
         "seed": args.seed,
         "max_steps": 40,  # Environment max steps
     }
@@ -222,9 +225,8 @@ def save_results_csv(results: List[Dict], output_path: str) -> None:
         return
 
     # Ensure output directory exists
-    output_dir = os.path.dirname(output_path)
-    if output_dir:  # Only create directory if there is one
-        os.makedirs(output_dir, exist_ok=True)
+    output_path_obj = Path(output_path)
+    output_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = [
         "episode",
@@ -239,7 +241,7 @@ def save_results_csv(results: List[Dict], output_path: str) -> None:
         "error",
     ]
 
-    with open(output_path, "w", newline="") as csvfile:
+    with output_path_obj.open("w", newline="") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(results)

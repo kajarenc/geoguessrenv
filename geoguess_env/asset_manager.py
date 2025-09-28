@@ -10,7 +10,7 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 from PIL import Image
@@ -686,7 +686,7 @@ class AssetManager:
         # For now, this is a no-op
         pass
 
-    def _metadata_from_dict(self, data: Dict[str, object]) -> PanoramaMetadata:
+    def _metadata_from_dict(self, data: Dict[str, Any]) -> PanoramaMetadata:
         """Construct PanoramaMetadata from stored dict."""
 
         pano_id = data.get("pano_id") or data.get("id")
@@ -694,15 +694,29 @@ class AssetManager:
             raise ValueError("Metadata payload missing pano_id")
 
         links = data.get("links") or []
+
+        # Extract values with proper type checking
+        lat = float(data.get("lat", 0.0))
+        lon = float(data.get("lon", 0.0))
+        heading = float(data.get("heading", 0.0))
+        pitch = float(data.get("pitch", 0.0)) if data.get("pitch") is not None else None
+        roll = float(data.get("roll", 0.0)) if data.get("roll") is not None else None
+        date = str(data.get("date")) if data.get("date") is not None else None
+        elevation = (
+            float(data.get("elevation", 0.0))
+            if data.get("elevation") is not None
+            else None
+        )
+
         return PanoramaMetadata(
             pano_id=pano_id,
-            lat=data.get("lat"),
-            lon=data.get("lon"),
-            heading=data.get("heading"),
-            pitch=data.get("pitch"),
-            roll=data.get("roll"),
-            date=data.get("date"),
-            elevation=data.get("elevation"),
+            lat=lat,
+            lon=lon,
+            heading=heading,
+            pitch=pitch,
+            roll=roll,
+            date=date,
+            elevation=elevation,
             links=links,
         )
 

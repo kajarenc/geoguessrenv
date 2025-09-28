@@ -27,6 +27,9 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ruff>=0.13.0",
+    "ty>=0.0.1a21",
+    "types-requests>=2.32.0",
+    "types-pillow>=10.0.0",
 ]
 
 [tool.ruff]
@@ -39,3 +42,7 @@ extend-select = ["I"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.ty]
+# Python version configuration
+environment.python-version = "3.10"

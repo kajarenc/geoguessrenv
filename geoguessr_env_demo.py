@@ -62,7 +62,7 @@ def main() -> None:
         print(info)
         print("---------")
         env.render()
-        total_reward += reward
+        total_reward += float(reward)
         steps += 1
         done = terminated or truncated
 

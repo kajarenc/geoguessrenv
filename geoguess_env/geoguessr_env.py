@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -514,7 +514,7 @@ class GeoGuessrEnv(gym.Env):
         return {"image": self._current_image}
 
     # --- Click handling and link mapping ---
-    def _compute_link_screens(self) -> List[Dict[str, object]]:
+    def _compute_link_screens(self) -> List[Dict[str, Any]]:
         """
         Compute screen-space centers for current links using GeometryUtils.
         """
@@ -522,7 +522,7 @@ class GeoGuessrEnv(gym.Env):
         pano_heading = node.get("heading", 0.0)
         current_heading_rad = self._heading_rad
         # Normalize link directions: metadata stores radians; pass through as radians.
-        normalized_links: List[Dict[str, object]] = []
+        normalized_links: List[Dict[str, Any]] = []
         for link in self.current_links or []:
             try:
                 raw_dir = float(link.get("direction", 0.0))

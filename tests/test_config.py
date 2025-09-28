@@ -27,6 +27,7 @@ class TestGeofenceConfig:
         )
 
         assert geofence.type == "circle"
+        assert geofence.center is not None
         assert geofence.center["lat"] == 40.7128
         assert geofence.center["lon"] == -74.0060
         assert geofence.radius_km == 10.0
@@ -187,6 +188,7 @@ class TestGeoGuessrConfig:
 
         assert config.geofence is not None
         assert config.geofence.type == "circle"
+        assert config.geofence.center is not None
         assert config.geofence.center["lat"] == 40.7128
         assert config.geofence.radius_km == 10.0
 

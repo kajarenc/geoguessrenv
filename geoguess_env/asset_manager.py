@@ -10,7 +10,7 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 from PIL import Image
@@ -686,7 +686,7 @@ class AssetManager:
         # For now, this is a no-op
         pass
 
-    def _metadata_from_dict(self, data: Dict[str, object]) -> PanoramaMetadata:
+    def _metadata_from_dict(self, data: Dict[str, Any]) -> PanoramaMetadata:
         """Construct PanoramaMetadata from stored dict."""
 
         pano_id = data.get("pano_id") or data.get("id")
@@ -694,15 +694,47 @@ class AssetManager:
             raise ValueError("Metadata payload missing pano_id")
 
         links = data.get("links") or []
+
+        def _require_float(value: object, field_name: str) -> float:
+            if value is None:
+                raise ValueError(
+                    f"Metadata payload missing required '{field_name}' for pano_id={pano_id}"
+                )
+            try:
+                return float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Invalid {field_name} value for pano_id={pano_id}: {value!r}"
+                ) from exc
+
+        def _optional_float(value: object, field_name: str) -> Optional[float]:
+            if value is None:
+                return None
+            try:
+                return float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Invalid {field_name} value for pano_id={pano_id}: {value!r}"
+                ) from exc
+
+        lat = _require_float(data.get("lat"), "lat")
+        lon = _require_float(data.get("lon"), "lon")
+        heading = _require_float(data.get("heading"), "heading")
+        pitch = _optional_float(data.get("pitch"), "pitch")
+        roll = _optional_float(data.get("roll"), "roll")
+        elevation = _optional_float(data.get("elevation"), "elevation")
+        date_value = data.get("date")
+        date = str(date_value) if date_value is not None else None
+
         return PanoramaMetadata(
             pano_id=pano_id,
-            lat=data.get("lat"),
-            lon=data.get("lon"),
-            heading=data.get("heading"),
-            pitch=data.get("pitch"),
-            roll=data.get("roll"),
-            date=data.get("date"),
-            elevation=data.get("elevation"),
+            lat=lat,
+            lon=lon,
+            heading=heading,
+            pitch=pitch,
+            roll=roll,
+            date=date,
+            elevation=elevation,
             links=links,
         )
 

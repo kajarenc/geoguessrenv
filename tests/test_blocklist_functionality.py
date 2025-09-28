@@ -18,7 +18,7 @@ class TestBlocklistFunctionality:
         """Test that blocklist initializes correctly."""
         with tempfile.TemporaryDirectory() as tmpdir:
             provider = MagicMock(spec=GoogleStreetViewProvider)
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
 
             # Should start with empty blocklist
             assert len(manager._failed_panoramas) == 0
@@ -28,7 +28,7 @@ class TestBlocklistFunctionality:
         """Test adding panorama IDs to blocklist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             provider = MagicMock(spec=GoogleStreetViewProvider)
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
 
             # Add a panorama to blocklist
             manager._add_to_blocklist("bad_pano_1")
@@ -49,19 +49,19 @@ class TestBlocklistFunctionality:
             provider = MagicMock(spec=GoogleStreetViewProvider)
 
             # First instance - add to blocklist
-            manager1 = AssetManager(provider=provider, cache_root=tmpdir)
+            manager1 = AssetManager(provider=provider, cache_root=Path(tmpdir))
             manager1._add_to_blocklist("persistent_bad_pano")
             assert manager1.is_blocklisted("persistent_bad_pano")
 
             # Second instance - should load blocklist from disk
-            manager2 = AssetManager(provider=provider, cache_root=tmpdir)
+            manager2 = AssetManager(provider=provider, cache_root=Path(tmpdir))
             assert manager2.is_blocklisted("persistent_bad_pano")
 
     def test_blocklisted_panorama_skipped_in_fetch(self):
         """Test that blocklisted panoramas are skipped during fetch."""
         with tempfile.TemporaryDirectory() as tmpdir:
             provider = MagicMock(spec=GoogleStreetViewProvider)
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
 
             # Add to blocklist
             manager._add_to_blocklist("blocked_pano")
@@ -86,7 +86,7 @@ class TestBlocklistFunctionality:
             )
             provider.download_panorama_image.return_value = False
 
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
 
             # Attempt to fetch asset
             result = manager._fetch_and_cache_asset("failing_pano")
@@ -107,7 +107,7 @@ class TestBlocklistFunctionality:
             provider = MagicMock(spec=GoogleStreetViewProvider)
             provider.find_nearest_panorama.return_value = "blocklisted_root"
 
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
             manager._add_to_blocklist("blocklisted_root")
 
             # Should raise ValueError since no panorama can be found (blocklisted one is skipped)
@@ -136,7 +136,7 @@ class TestBlocklistFunctionality:
             provider = MagicMock(spec=GoogleStreetViewProvider)
             provider.find_nearest_panorama.return_value = "new_good_pano"
 
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
 
             # Request the same coordinates
             result = manager._get_or_find_nearest_panorama(47.0, -122.0)
@@ -157,7 +157,7 @@ class TestBlocklistFunctionality:
             # First call returns blocklisted, second returns good
             provider.find_nearest_panorama.return_value = "blocklisted_pano"
 
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
             manager._add_to_blocklist("blocklisted_pano")
 
             # Should return None since the found panorama is blocklisted
@@ -168,7 +168,7 @@ class TestBlocklistFunctionality:
         """Test handling multiple panoramas in blocklist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             provider = MagicMock(spec=GoogleStreetViewProvider)
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
 
             # Add multiple panoramas
             bad_ids = ["bad1", "bad2", "bad3"]
@@ -202,7 +202,7 @@ class TestBlocklistFunctionality:
             provider = MagicMock(spec=GoogleStreetViewProvider)
 
             # Should not crash, should start with empty blocklist
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
             assert len(manager._failed_panoramas) == 0
 
     def test_prepare_graph_adds_failed_root_to_blocklist(self):
@@ -221,7 +221,7 @@ class TestBlocklistFunctionality:
                 False  # Simulate download failure
             )
 
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
 
             # The first attempt will fail during _fetch_and_build_graph
             # But it should try to fetch the asset which will add it to blocklist

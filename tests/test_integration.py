@@ -64,6 +64,7 @@ class TestGeoGuessrEnvironmentIntegration:
             # Check geofence configuration
             assert env.config.geofence is not None
             assert env.config.geofence.type == "circle"
+            assert env.config.geofence.center is not None
             assert env.config.geofence.center["lat"] == 47.620908
             assert env.config.geofence.radius_km == 5.0
 

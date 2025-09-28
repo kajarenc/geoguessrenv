@@ -9,7 +9,7 @@ import json
 import math
 import tempfile
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 from unittest.mock import Mock
 
 import numpy as np
@@ -321,7 +321,7 @@ def assert_angle_close(actual_rad: float, expected_rad: float, tolerance: float 
 def setup_mock_provider_responses(
     provider: Mock,
     pano_metadata: Dict[str, PanoramaMetadata],
-    find_responses: Dict[str, str] = None,
+    find_responses: Optional[Dict[str, str]] = None,
 ):
     """Set up mock provider with specific responses."""
     if find_responses:
@@ -335,7 +335,11 @@ def setup_mock_provider_responses(
 
 
 def create_test_panorama_metadata(
-    pano_id: str, lat: float, lon: float, heading: float = 0.0, links: List[Dict] = None
+    pano_id: str,
+    lat: float,
+    lon: float,
+    heading: float = 0.0,
+    links: Optional[List[Dict]] = None,
 ) -> PanoramaMetadata:
     """Create test panorama metadata with optional links."""
     return PanoramaMetadata(

@@ -4,7 +4,7 @@ Implements the minimal arrow follower described in TaskDescription.md.
 """
 
 import random
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from .vlm_broker import VLMBroker
 
@@ -28,7 +28,10 @@ class BaselineAgent:
     ]
 
     def __init__(
-        self, max_nav_steps: int = 20, sweep_positions: int = 8, seed: int = None
+        self,
+        max_nav_steps: int = 20,
+        sweep_positions: int = 8,
+        seed: Optional[int] = None,
     ):
         """
         Initialize baseline agent.

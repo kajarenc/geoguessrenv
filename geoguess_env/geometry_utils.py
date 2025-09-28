@@ -6,7 +6,7 @@ distance calculations, and link projection for panorama navigation.
 """
 
 import math
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -174,7 +174,7 @@ class GeometryUtils:
         screen_links: List[Dict],
         hit_radius: int,
         min_confidence: float = 0.0,
-    ) -> Dict:
+    ) -> Optional[Dict]:
         """
         Find the navigation link closest to a click position.
 

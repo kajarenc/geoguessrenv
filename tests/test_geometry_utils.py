@@ -246,6 +246,7 @@ class TestGeometryUtils:
         )
 
         # Closer link should be selected despite worse heading
+        assert result is not None
         assert result["id"] == "close_worse_heading"
 
     def test_sample_circular_geofence(self):

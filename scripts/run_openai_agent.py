@@ -105,7 +105,7 @@ def main() -> None:
             action = agent.act(obs, info)
 
         obs, reward, terminated, truncated, info = env.step(action)
-        total_reward += reward
+        total_reward += float(reward)
         steps += 1
         if args.render:
             env.render()

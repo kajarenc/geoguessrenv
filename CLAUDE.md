@@ -48,6 +48,19 @@ uv run python geoguess_env/run_baseline.py --episodes 2 --out results.csv --geof
 uv run pytest tests/ -v
 ```
 
+### Type Checking
+```bash
+# Run type checking with Astral's ty tool
+uv run ty check .
+
+# Check specific file or directory
+uv run ty check geoguess_env/
+uv run ty check tests/
+
+# Watch mode for development
+uv run ty check . --watch
+```
+
 ### Code Quality
 - Set up pre-commit hooks: `pre-commit install`
 - Pre-commit hooks will run automatically on commits
@@ -151,18 +164,29 @@ The project includes several agent implementations for different use cases:
 ### Python Development Standards
 - **Supported Python versions**: 3.10+ (as specified in pyproject.toml)
 - **Linter & Formatter**: Ruff 0.x (enforces PEP 8 compliance)
+- **Type Checker**: Astral ty 0.0.1a (fast Python type checker)
 - **Testing Framework**: pytest 8.x
 - **Dependency Management**: Use `uv` exclusively for dependency installation, synchronization, and locking. Never use `pip`, `pip-tools`, or `poetry` directly.
 
 ### Key Principles
 - **Code Style**: Follow PEP 8 guidelines strictly with Ruff enforcement
 - **Pythonic Code**: Write elegant, readable code following the Zen of Python
+- **Type Safety**: Add comprehensive type annotations and maintain zero type errors
 - **Architecture**: Prefer composition over inheritance
 - **Naming**: Use snake_case for all Python folders and filenames
 - **Self-Documenting Code**: Name functions and variables clearly to minimize need for comments
 - **Comments**: When needed, capitalize comments with proper grammar and punctuation
 - **Testing**: Write comprehensive unit tests using pytest
 - **Modern Python**: Prioritize features available in Python 3.9+
+
+### Type Annotation Guidelines
+- **Use type hints** for all function parameters and return values
+- **Import types** from `typing` module: `Optional`, `List`, `Dict`, `Any`, `Tuple`, etc.
+- **Prefer specific types** over `Any` when possible
+- **Use Optional** for parameters that can be None: `Optional[int]` not `int = None`
+- **Use type: ignore** sparingly and only when ty's inference is incorrect
+- **Fix type errors** immediately rather than suppressing them
+- **Run ty check** before committing code changes
 
 ## Testing and Usage
 
@@ -269,11 +293,13 @@ Located in `.github/workflows/python-package.yml`:
 - Workflow steps:
   1. Linting with Ruff
   2. Format checking with Ruff
-  3. Full test suite with pytest
+  3. Type checking with ty
+  4. Full test suite with pytest
 
 ### Pre-commit Hooks
 Configured in `.pre-commit-config.yaml`:
 - Automatically runs Ruff linting and formatting
+- Runs ty type checking on Python files
 - Ensures code quality before commits
 - Install with: `pre-commit install`
 

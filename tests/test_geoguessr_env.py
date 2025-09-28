@@ -1,5 +1,6 @@
 import math
 from pathlib import Path
+from typing import Callable
 from unittest.mock import patch
 
 import numpy as np
@@ -643,7 +644,7 @@ def test_reset_seed_determinism(tmp_path):
         return center_lat + offset, center_lon - offset
 
     # Override the sampler so seeds map to predictable coordinates for the test
-    env._sample_from_geofence = deterministic_geofence_sample
+    env._sample_from_geofence: Callable = deterministic_geofence_sample
 
     test_image = np.zeros((512, 1024, 3), dtype=np.uint8)
     heading_cache = {}

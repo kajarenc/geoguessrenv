@@ -211,7 +211,7 @@ class TestDataLoadingFlow:
             provider.get_panorama_metadata.return_value = metadata
             provider.download_panorama_image.return_value = False  # Simulate failure
 
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
 
             # Attempt to prepare graph - will fail with ValueError since fetch returns empty dict
             with pytest.raises(ValueError) as exc_info:
@@ -278,7 +278,7 @@ class TestDataLoadingFlow:
             provider.compute_image_hash.return_value = "dummy_hash"
 
             manager = AssetManager(
-                provider=provider, cache_root=tmpdir, max_connected_panoramas=3
+                provider=provider, cache_root=Path(tmpdir), max_connected_panoramas=3
             )
 
             # Prepare graph
@@ -307,7 +307,7 @@ class TestDataLoadingFlow:
             provider = MagicMock(spec=GoogleStreetViewProvider)
             provider.find_nearest_panorama.return_value = "new_pano"
 
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
 
             # Add the cached panorama to blocklist
             manager._add_to_blocklist("cached_pano")
@@ -345,7 +345,7 @@ class TestDataLoadingFlow:
                 links=[],
             )
 
-            manager = AssetManager(provider=provider, cache_root=tmpdir)
+            manager = AssetManager(provider=provider, cache_root=Path(tmpdir))
 
             # First attempt - should try to download
             result1 = manager._fetch_and_cache_asset("bad_pano")

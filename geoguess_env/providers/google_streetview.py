@@ -5,18 +5,28 @@ This module implements the PanoramaProvider interface for Google Street View
 using the streetview and streetlevel libraries.
 """
 
+from __future__ import annotations
+
+import importlib
 import logging
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
-
-from streetlevel import streetview as streetlevel
-from streetview import search_panoramas
+from types import SimpleNamespace
+from typing import Any, Callable, Dict, List, Optional
 
 from ..load_panorama_helper import load_single_panorama
+from ..types import NavigationLink
 from .base import PanoramaMetadata, PanoramaProvider
 
 logger = logging.getLogger(__name__)
+
+
+# Street View dependencies are optional in test environments. Provide
+# lightweight placeholders that tests can monkeypatch while avoiding
+# importing the heavy native modules up-front (which can segfault on CI).
+streetlevel: Any = SimpleNamespace(__lazy_stub__=True)
+search_panoramas: Callable[..., Any] | None = None
+_STREETVIEW_IMPORT_ERROR: Exception | None = None
 
 
 class GoogleStreetViewProvider(PanoramaProvider):
@@ -71,7 +81,8 @@ class GoogleStreetViewProvider(PanoramaProvider):
                 if self.rate_limit_qps:
                     time.sleep(1.0 / self.rate_limit_qps)
 
-                panos = search_panoramas(lat=lat, lon=lon)
+                search = self._get_search_function()
+                panos = search(lat=lat, lon=lon)
 
                 if not panos:
                     return None
@@ -233,14 +244,15 @@ class GoogleStreetViewProvider(PanoramaProvider):
                 if self.rate_limit_qps:
                     time.sleep(1.0 / self.rate_limit_qps)
 
-                pano = streetlevel.find_panorama_by_id(pano_id)
+                streetlevel_module = self._get_streetlevel_module()
+                pano = streetlevel_module.find_panorama_by_id(pano_id)
                 if not pano:
                     logger.warning(
                         "Panorama %s not found when fetching metadata", pano_id
                     )
                     return None
 
-                links = []
+                links: List[NavigationLink] = []
                 if hasattr(pano, "links") and pano.links:
                     for link in pano.links:
                         if hasattr(link, "pano") and hasattr(link.pano, "id"):
@@ -336,3 +348,47 @@ class GoogleStreetViewProvider(PanoramaProvider):
                 return str(date_obj)
 
         return str(date_obj)
+
+    def _get_streetlevel_module(self) -> Any:
+        """Return the lazily imported streetlevel module."""
+
+        global streetlevel
+
+        if getattr(streetlevel, "__lazy_stub__", False):
+            if hasattr(streetlevel, "find_panorama_by_id"):
+                return streetlevel
+            streetlevel = self._import_streetview_modules()[0]
+
+        return streetlevel
+
+    def _get_search_function(self) -> Callable[..., Any]:
+        """Return the search_panoramas callable, importing if necessary."""
+
+        global search_panoramas
+
+        if search_panoramas is not None:
+            return search_panoramas
+
+        return self._import_streetview_modules()[1]
+
+    def _import_streetview_modules(self) -> tuple[Any, Callable[..., Any]]:
+        """Attempt to import Street View dependencies and cache them."""
+
+        global streetlevel, search_panoramas, _STREETVIEW_IMPORT_ERROR
+
+        if _STREETVIEW_IMPORT_ERROR is not None:
+            raise RuntimeError(
+                "Street View dependencies failed to import"
+            ) from _STREETVIEW_IMPORT_ERROR
+
+        try:
+            streetlevel_module = importlib.import_module("streetlevel.streetview")
+            streetview_module = importlib.import_module("streetview")
+            search_fn = getattr(streetview_module, "search_panoramas")
+        except Exception as exc:  # pragma: no cover - optional dependency
+            _STREETVIEW_IMPORT_ERROR = exc
+            raise RuntimeError("Street View dependencies are unavailable") from exc
+
+        streetlevel = streetlevel_module
+        search_panoramas = search_fn
+        return streetlevel_module, search_fn

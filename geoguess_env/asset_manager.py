@@ -5,9 +5,12 @@ This module provides the AssetManager class that orchestrates panorama
 data fetching, caching, and validation for the GeoGuessr environment.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from collections import OrderedDict
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -16,6 +19,7 @@ import numpy as np
 from PIL import Image
 
 from .providers.base import PanoramaAsset, PanoramaMetadata, PanoramaProvider
+from .types import NavigationLink, ObservationArray, PanoramaGraph
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +33,7 @@ class PanoramaGraphResult:
     """Result of preparing a panorama graph for an episode."""
 
     root_id: str
-    graph: Dict[str, Dict]
+    graph: PanoramaGraph
     missing_assets: Set[str]
 
 
@@ -67,7 +71,7 @@ class AssetManager:
 
         # Cache for in-memory metadata
         self._metadata_cache: Dict[str, PanoramaMetadata] = {}
-        self._image_cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
+        self._image_cache: "OrderedDict[str, ObservationArray]" = OrderedDict()
         self._image_cache_capacity = max(8, max_connected_panoramas * 2)
 
         # Failed panoramas blocklist
@@ -273,7 +277,7 @@ class AssetManager:
                     f"No panorama graph available for coordinates {root_lat}, {root_lon}"
                 )
 
-        sanitized_graph: Dict[str, Dict] = {}
+        sanitized_graph: PanoramaGraph = {}
         missing_assets: Set[str] = set()
 
         for pano_id in raw_graph.keys():
@@ -324,7 +328,7 @@ class AssetManager:
             root_id=root_pano_id, graph=sanitized_graph, missing_assets=missing_assets
         )
 
-    def get_image_array(self, pano_id: str) -> Optional[np.ndarray]:
+    def get_image_array(self, pano_id: str) -> Optional[ObservationArray]:
         """Return RGB image array for a panorama, caching in memory."""
 
         cached = self._image_cache.get(pano_id)
@@ -435,7 +439,7 @@ class AssetManager:
 
         return pano_id
 
-    def _load_panorama_graph(self, root_pano_id: str) -> Dict[str, Dict]:
+    def _load_panorama_graph(self, root_pano_id: str) -> PanoramaGraph:
         """Load panorama graph from cache or fetch if needed."""
         graph = self._load_cached_graph(root_pano_id)
 
@@ -444,13 +448,13 @@ class AssetManager:
 
         return self._fetch_and_build_graph(root_pano_id)
 
-    def _load_cached_graph(self, root_pano_id: str) -> Dict[str, Dict]:
+    def _load_cached_graph(self, root_pano_id: str) -> PanoramaGraph:
         """Load panorama graph from cached metadata."""
         mini_file = self.metadata_dir / f"{root_pano_id}_mini.jsonl"
         if not mini_file.exists():
             return {}
 
-        graph = {}
+        graph: PanoramaGraph = {}
         try:
             with open(mini_file, "r", encoding="utf-8") as f:
                 for line in f:
@@ -459,7 +463,7 @@ class AssetManager:
                         pano_id = data.get("id")
                         if pano_id:
                             # Convert to environment format
-                            links = []
+                            links: List[NavigationLink] = []
                             if data.get("links"):
                                 for link in data["links"]:
                                     if isinstance(link, dict) and "pano" in link:
@@ -490,9 +494,9 @@ class AssetManager:
 
         return graph
 
-    def _fetch_and_build_graph(self, root_pano_id: str) -> Dict[str, Dict]:
+    def _fetch_and_build_graph(self, root_pano_id: str) -> PanoramaGraph:
         """Fetch panorama data and build graph."""
-        graph = {}
+        graph: PanoramaGraph = {}
         visited = set()
         queue = [root_pano_id]
         queued: Set[str] = {root_pano_id}
@@ -519,7 +523,7 @@ class AssetManager:
                 continue
 
             # Add to graph
-            links = []
+            links: List[NavigationLink] = []
             if metadata.links:
                 for link in metadata.links:
                     link_id = link.get("id")
@@ -627,7 +631,7 @@ class AssetManager:
         image_path = self.images_dir / f"{pano_id}.jpg"
         return image_path.exists()
 
-    def _save_graph_to_cache(self, root_pano_id: str, graph: Dict[str, Dict]):
+    def _save_graph_to_cache(self, root_pano_id: str, graph: PanoramaGraph):
         """Save graph to cache files."""
         # Save raw metadata (for compatibility)
         mini_file = self.metadata_dir / f"{root_pano_id}_mini.jsonl"
@@ -693,7 +697,7 @@ class AssetManager:
         if not pano_id:
             raise ValueError("Metadata payload missing pano_id")
 
-        links = data.get("links") or []
+        links = self._normalize_links(data.get("links"))
 
         def _require_float(value: object, field_name: str) -> float:
             if value is None:
@@ -760,26 +764,37 @@ class AssetManager:
 
         return None
 
-    def _normalize_links(self, links: Optional[List[Dict]]) -> List[Dict]:
+    def _normalize_links(
+        self, links: Optional[Sequence[Mapping[str, Any]]]
+    ) -> List[NavigationLink]:
         """Normalize link payload into env-friendly structure."""
 
-        normalized: List[Dict] = []
+        normalized: List[NavigationLink] = []
         if not links:
             return normalized
 
         for link in links:
-            if not isinstance(link, dict):
+            if not isinstance(link, Mapping):
                 continue
 
             link_id = link.get("id")
-            if link_id is None and isinstance(link.get("pano"), dict):
-                link_id = link["pano"].get("id")
+            if link_id is None and isinstance(link.get("pano"), Mapping):
+                pano = link["pano"]
+                if isinstance(pano, Mapping):
+                    link_id = pano.get("id")
 
-            if not link_id:
+            if not isinstance(link_id, str) or not link_id:
                 continue
 
             direction = link.get("direction")
-            normalized.append({"id": link_id, "direction": direction})
+            normalized.append(
+                {
+                    "id": link_id,
+                    "direction": float(direction)
+                    if isinstance(direction, (int, float))
+                    else None,
+                }
+            )
 
         return normalized
 

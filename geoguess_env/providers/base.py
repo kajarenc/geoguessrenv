@@ -5,11 +5,15 @@ This module defines the abstract interface that all panorama providers
 must implement to work with the GeoGuessr environment.
 """
 
+from __future__ import annotations
+
 import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
+
+from ..types import NavigationLink
 
 
 @dataclass
@@ -24,7 +28,7 @@ class PanoramaMetadata:
     roll: Optional[float] = None
     date: Optional[str] = None
     elevation: Optional[float] = None
-    links: Optional[List[Dict]] = None
+    links: Optional[List[NavigationLink]] = None
 
 
 @dataclass

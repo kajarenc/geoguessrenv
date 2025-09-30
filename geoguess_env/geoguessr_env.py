@@ -53,7 +53,7 @@ class GeoGuessrEnv(gym.Env):
 
     def __init__(
         self,
-        config: Mapping[str, object] | None = None,
+        config: Mapping[str, Any] | None = None,
         render_mode: str | None = None,
     ) -> None:
         """
@@ -305,7 +305,7 @@ class GeoGuessrEnv(gym.Env):
         return float(heading) if isinstance(heading, (int, float)) else 0.0
 
     def step(
-        self, action: Mapping[str, object] | str
+        self, action: Mapping[str, Any] | str
     ) -> tuple[Observation, float, bool, bool, EnvInfo]:
         """Execute one environment step using a click or answer action."""
 
@@ -557,16 +557,14 @@ class GeoGuessrEnv(gym.Env):
         )
 
     @staticmethod
-    def _normalize_lat_lon(value: object, error_message: str) -> tuple[float, float]:
+    def _normalize_lat_lon(value: Any, error_message: str) -> tuple[float, float]:
         """Extract latitude and longitude from supported container types."""
-
         lat: float | None
         lon: float | None
 
         if isinstance(value, Mapping):
-            mapping_dict = dict(value)
-            lat_candidate = mapping_dict.get("lat")
-            lon_candidate = mapping_dict.get("lon")
+            lat_candidate = dict(value).get("lat")
+            lon_candidate = dict(value).get("lon")
             lat = (
                 float(lat_candidate)
                 if isinstance(lat_candidate, (int, float))
@@ -702,8 +700,7 @@ class GeoGuessrEnv(gym.Env):
         if current_id is None:
             raise RuntimeError("Current pano ID unset after navigation")
         node = self._pano_graph.get(current_id, {})
-        heading = node.get("heading")
-        if isinstance(heading, (int, float)):
+        if isinstance(heading := node.get("heading"), (int, float)):
             self._heading_rad = float(heading)
 
     def _ensure_pygame(self, allow_failure: bool = False) -> ModuleType | None:

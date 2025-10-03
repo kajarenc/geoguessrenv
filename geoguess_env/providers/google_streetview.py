@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from tenacity import after_log, retry, stop_after_attempt, wait_exponential
+from tenacity import RetryError, after_log, retry, stop_after_attempt, wait_exponential
 
 from ..load_panorama_helper import load_single_panorama
 from .base import PanoramaMetadata, PanoramaProvider
@@ -116,7 +116,11 @@ class GoogleStreetViewProvider(PanoramaProvider):
             True if download successful, False otherwise
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        return self._download_with_retry(pano_id, output_path)
+        try:
+            return self._download_with_retry(pano_id, output_path)
+        except RetryError:
+            logger.warning("Failed to download panorama %s after retries", pano_id)
+            return False
 
     @retry(
         stop=stop_after_attempt(3),

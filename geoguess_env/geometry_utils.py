@@ -8,7 +8,7 @@ distance calculations, and link projection for panorama navigation.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -399,3 +399,54 @@ class GeometryUtils:
         clamped_lat = max(-90.0, min(90.0, lat))
         clamped_lon = max(-180.0, min(180.0, lon))
         return clamped_lat, clamped_lon
+
+    @staticmethod
+    def coerce_lat_lon(value: object, error_message: str) -> FloatPair:
+        """
+        Coerce an arbitrary value into a (lat, lon) FloatPair.
+
+        Supports:
+        - Mapping with 'lat' and 'lon' numeric entries
+        - Sequence [lat, lon]
+        - Object with numeric 'lat' and 'lon' attributes
+
+        Args:
+            value: Input value to coerce
+            error_message: Message for ValueError if coercion fails
+
+        Returns:
+            Tuple of (lat, lon) as floats
+        """
+        lat: float | None
+        lon: float | None
+
+        if isinstance(value, Mapping):
+            candidate = dict(value)
+            lat_candidate = candidate.get("lat")
+            lon_candidate = candidate.get("lon")
+            lat = (
+                float(lat_candidate)
+                if isinstance(lat_candidate, (int, float))
+                else None
+            )
+            lon = (
+                float(lon_candidate)
+                if isinstance(lon_candidate, (int, float))
+                else None
+            )
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            if len(value) < 2:
+                raise ValueError(error_message)
+            lat_val, lon_val = value[0], value[1]
+            lat = float(lat_val) if isinstance(lat_val, (int, float)) else None
+            lon = float(lon_val) if isinstance(lon_val, (int, float)) else None
+        else:
+            lat_attr = getattr(value, "lat", None)
+            lon_attr = getattr(value, "lon", None)
+            lat = float(lat_attr) if isinstance(lat_attr, (int, float)) else None
+            lon = float(lon_attr) if isinstance(lon_attr, (int, float)) else None
+
+        if lat is None or lon is None:
+            raise ValueError(error_message)
+
+        return float(lat), float(lon)

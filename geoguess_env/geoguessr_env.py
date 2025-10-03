@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import logging
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
@@ -489,7 +489,7 @@ class GeoGuessrEnv(gym.Env):
                 raise ValueError(
                     "Circle geofence requires a center with 'lat' and 'lon' values"
                 )
-            center_lat, center_lon = self._normalize_lat_lon(
+            center_lat, center_lon = GeometryUtils.coerce_lat_lon(
                 geofence.center,
                 "Circle geofence center must provide 'lat' and 'lon' values",
             )
@@ -508,7 +508,7 @@ class GeoGuessrEnv(gym.Env):
             if not polygon_points:
                 raise ValueError("Polygon geofence requires a non-empty 'polygon' list")
             normalized_polygon = [
-                self._normalize_lat_lon(
+                GeometryUtils.coerce_lat_lon(
                     point, "Polygon geofence points must provide 'lat' and 'lon' values"
                 )
                 for point in polygon_points
@@ -555,42 +555,6 @@ class GeoGuessrEnv(gym.Env):
         raise ValueError(
             f"Could not find valid coordinates with panoramas after {max_attempts} attempts"
         )
-
-    @staticmethod
-    def _normalize_lat_lon(value: Any, error_message: str) -> tuple[float, float]:
-        """Extract latitude and longitude from supported container types."""
-        lat: float | None
-        lon: float | None
-
-        if isinstance(value, Mapping):
-            lat_candidate = dict(value).get("lat")
-            lon_candidate = dict(value).get("lon")
-            lat = (
-                float(lat_candidate)
-                if isinstance(lat_candidate, (int, float))
-                else None
-            )
-            lon = (
-                float(lon_candidate)
-                if isinstance(lon_candidate, (int, float))
-                else None
-            )
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            if len(value) < 2:
-                raise ValueError(error_message)
-            lat_val, lon_val = value[0], value[1]
-            lat = float(lat_val) if isinstance(lat_val, (int, float)) else None
-            lon = float(lon_val) if isinstance(lon_val, (int, float)) else None
-        else:
-            lat_attr = getattr(value, "lat", None)
-            lon_attr = getattr(value, "lon", None)
-            lat = float(lat_attr) if isinstance(lat_attr, (int, float)) else None
-            lon = float(lon_attr) if isinstance(lon_attr, (int, float)) else None
-
-        if lat is None or lon is None:
-            raise ValueError(error_message)
-
-        return float(lat), float(lon)
 
     # --- Helpers ---
 

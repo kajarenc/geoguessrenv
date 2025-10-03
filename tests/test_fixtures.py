@@ -122,7 +122,6 @@ def mock_provider():
     provider = Mock(spec=PanoramaProvider)
     provider.provider_name = "mock_provider"
     provider.max_retries = 3
-    provider.rate_limit_qps = None
     provider.min_capture_year = None
 
     # Set up default return values

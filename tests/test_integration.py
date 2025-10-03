@@ -6,7 +6,7 @@ Tests the complete environment workflow with the new modular architecture.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -70,15 +70,13 @@ class TestGeoGuessrEnvironmentIntegration:
 
             env.close()
 
-    @patch("geoguess_env.providers.google_streetview.streetlevel")
-    @patch("geoguess_env.providers.google_streetview.search_panoramas")
-    def test_environment_reset_with_mocked_data(self, mock_search, mock_streetlevel):
+    def test_environment_reset_with_mocked_data(self):
         """Test environment reset with mocked panorama data."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Set up mocks
             mock_pano = Mock()
             mock_pano.pano_id = "test_pano_123"
-            mock_search.return_value = [mock_pano]
+            mock_pano.date = "2024-01"  # Add date for _get_capture_date
 
             mock_panorama = Mock()
             mock_panorama.id = "test_pano_123"
@@ -86,7 +84,14 @@ class TestGeoGuessrEnvironmentIntegration:
             mock_panorama.lon = -122.353508
             mock_panorama.heading = 0.0
             mock_panorama.links = []
-            mock_streetlevel.find_panorama_by_id.return_value = mock_panorama
+            mock_panorama.date = "2024-01"
+
+            # Mock module with find_panorama_by_id method
+            mock_streetlevel_module = Mock()
+            mock_streetlevel_module.find_panorama_by_id.return_value = mock_panorama
+
+            # Mock search function
+            mock_search_fn = Mock(return_value=[mock_pano])
 
             # Create test image
             test_image_path = Path(temp_dir) / "images" / "test_pano_123.jpg"
@@ -105,6 +110,10 @@ class TestGeoGuessrEnvironmentIntegration:
             }
 
             env = GeoGuessrEnv(config=config)
+
+            # Patch the provider's lazy-loaded properties
+            env.asset_manager.provider._streetlevel_module = mock_streetlevel_module  # type: ignore[invalid-assignment]
+            env.asset_manager.provider._search_function = mock_search_fn  # type: ignore[invalid-assignment]
 
             # Test reset
             obs, info = env.reset()

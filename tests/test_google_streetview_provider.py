@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 
-import geoguess_env.providers.google_streetview as gsv
 from geoguess_env.providers.base import PanoramaMetadata
 from geoguess_env.providers.google_streetview import GoogleStreetViewProvider
 
@@ -85,7 +84,11 @@ def test_fetch_metadata_formats_date_and_links(monkeypatch: pytest.MonkeyPatch) 
         links=[Link("neighbor", 90.0)],
     )
 
-    monkeypatch.setattr(gsv.streetlevel, "find_panorama_by_id", lambda pano_id: pano)
+    # Mock the underlying module directly (the property getter caches to this)
+    mock_streetlevel = type(
+        "MockStreetLevel", (), {"find_panorama_by_id": lambda self, pano_id: pano}
+    )()
+    provider._streetlevel_module = mock_streetlevel
 
     metadata = provider._fetch_metadata_with_retries("root")
 

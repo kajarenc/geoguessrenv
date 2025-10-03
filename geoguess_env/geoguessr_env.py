@@ -35,6 +35,12 @@ if TYPE_CHECKING:  # pragma: no cover - import only for static analysis
 
 logger = logging.getLogger(__name__)
 
+# Constants
+MAX_GRAPH_PREPARATION_ATTEMPTS = 5
+MAX_GEOFENCE_SAMPLE_ATTEMPTS = 10
+DEGREES_IN_CIRCLE = 360.0
+EARTH_RADIUS_METERS = 6371000.0
+
 
 class GeoGuessrEnv(gym.Env):
     """
@@ -72,7 +78,6 @@ class GeoGuessrEnv(gym.Env):
 
         # Set up provider and asset manager
         self.provider = GoogleStreetViewProvider(
-            rate_limit_qps=self.config.provider_config.rate_limit_qps,
             max_retries=self.config.provider_config.max_fetch_retries,
             min_capture_year=self.config.provider_config.min_capture_year,
         )
@@ -296,13 +301,10 @@ class GeoGuessrEnv(gym.Env):
 
     def _get_heading_for_pano(self, pano_id: str | None) -> float:
         """Return the stored heading for the given panorama, defaulting to zero."""
-
-        if pano_id is None:
-            return 0.0
-
-        node = self._pano_graph.get(pano_id)
-        heading = node.get("heading") if node else None
-        return float(heading) if isinstance(heading, (int, float)) else 0.0
+        if pano_id and (node := self._pano_graph.get(pano_id)):
+            if (heading := node.get("heading")) and isinstance(heading, (int, float)):
+                return float(heading)
+        return 0.0
 
     def step(
         self, action: Mapping[str, Any] | str
@@ -603,23 +605,24 @@ class GeoGuessrEnv(gym.Env):
         """
         Compute screen-space centers for current links using GeometryUtils.
         """
-        current_pano_id = self.current_pano_id
-        if current_pano_id is None:
+        if (current_pano_id := self.current_pano_id) is None:
             return []
 
-        normalized_links: list[NavigationLink] = []
-        for link in self.current_links:
-            link_id = link.get("id") if isinstance(link, dict) else None
-            if not isinstance(link_id, str) or not link_id:
-                continue
+        def _parse_direction(link: Any) -> float:
+            """Extract and validate direction from link."""
             direction_value = link.get("direction") if isinstance(link, dict) else None
             try:
-                direction_rad = (
-                    float(direction_value) if direction_value is not None else 0.0
-                )
+                return float(direction_value) if direction_value is not None else 0.0
             except (TypeError, ValueError):
-                direction_rad = 0.0
-            normalized_links.append({"id": link_id, "direction": direction_rad})
+                return 0.0
+
+        normalized_links = [
+            {"id": link["id"], "direction": _parse_direction(link)}
+            for link in self.current_links
+            if isinstance(link, dict)
+            and isinstance(link.get("id"), str)
+            and link.get("id")
+        ]
 
         return GeometryUtils.compute_link_screen_positions(
             links=normalized_links,

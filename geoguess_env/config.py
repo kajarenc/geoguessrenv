@@ -40,7 +40,6 @@ class ProviderConfig:
     """Configuration for panorama data providers."""
 
     provider: str = "google_streetview"
-    rate_limit_qps: Optional[float] = None
     max_fetch_retries: int = 3
     min_capture_year: Optional[int] = None
 
@@ -237,7 +236,6 @@ class GeoGuessrConfig:
         # Add nested configs
         result["provider_config"] = {
             "provider": self.provider_config.provider,
-            "rate_limit_qps": self.provider_config.rate_limit_qps,
             "max_fetch_retries": self.provider_config.max_fetch_retries,
             "min_capture_year": self.provider_config.min_capture_year,
         }

@@ -794,6 +794,7 @@ dependencies = [
     { name = "requests" },
     { name = "streetlevel" },
     { name = "streetview" },
+    { name = "tenacity" },
 ]
 
 [package.dev-dependencies]
@@ -818,6 +819,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.5" },
     { name = "streetlevel", specifier = ">=0.12.4" },
     { name = "streetview", specifier = ">=0.0.16" },
+    { name = "tenacity", specifier = ">=9.1.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -3101,6 +3103,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/2c/86/57b8ce1092dbaa4d8591d3cc1d5250561f8d3f35aa970c94f0d9360b08bb/streetview-0.0.16.tar.gz", hash = "sha256:99d16e311a9836f347890c1e923dd6534915723f1ead4fb31fb7e79dd0c53149", size = 7687, upload-time = "2025-08-10T14:39:27.784Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/e8/dfe3952c925e24ba99dc624f567f057fcfbff61b947dfa22283b953a013f/streetview-0.0.16-py3-none-any.whl", hash = "sha256:d1faa0c54fea2f88da56086a13da9408c3cef80203ef7cc1970d1ee0279b3042", size = 8265, upload-time = "2025-08-10T14:39:26.844Z" },
+]
+
+[[package]]
+name = "tenacity"
+version = "9.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0a/d4/2b0cd0fe285e14b36db076e78c93766ff1d529d70408bd1d2a5a84f1d929/tenacity-9.1.2.tar.gz", hash = "sha256:1169d376c297e7de388d18b4481760d478b0e99a777cad3a9c86e556f4b697cb", size = 48036, upload-time = "2025-04-02T08:25:09.966Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/30/643397144bfbfec6f6ef821f36f33e57d35946c44a2352d3c9f0ae847619/tenacity-9.1.2-py3-none-any.whl", hash = "sha256:f77bf36710d8b73a50b2dd155c97b870017ad21afe6ab300326b0371b3b05138", size = 28248, upload-time = "2025-04-02T08:25:07.678Z" },
 ]
 
 [[package]]

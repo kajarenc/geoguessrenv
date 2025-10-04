@@ -51,7 +51,6 @@ class PanoramaProvider(ABC):
 
     def __init__(
         self,
-        rate_limit_qps: Optional[float] = None,
         max_retries: int = 3,
         min_capture_year: Optional[int] = None,
     ):
@@ -59,11 +58,9 @@ class PanoramaProvider(ABC):
         Initialize the provider.
 
         Args:
-            rate_limit_qps: Maximum queries per second (None for no limit)
             max_retries: Maximum number of retry attempts for failed requests
             min_capture_year: Minimum capture year for panorama filtering
         """
-        self.rate_limit_qps = rate_limit_qps
         self.max_retries = max_retries
         self.min_capture_year = min_capture_year
 

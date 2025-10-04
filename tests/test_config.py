@@ -197,7 +197,6 @@ class TestGeoGuessrConfig:
         config_dict = {
             "provider_config": {
                 "provider": "mapillary",
-                "rate_limit_qps": 2.0,
                 "max_fetch_retries": 5,
             },
             "render_config": {
@@ -211,7 +210,6 @@ class TestGeoGuessrConfig:
         config = GeoGuessrConfig.from_dict(config_dict)
 
         assert config.provider_config.provider == "mapillary"
-        assert config.provider_config.rate_limit_qps == 2.0
         assert config.provider_config.max_fetch_retries == 5
 
         assert config.render_config.image_width == 2048
@@ -225,7 +223,6 @@ class TestGeoGuessrConfig:
         """Legacy top-level config keys should raise a helpful error."""
         config_dict = {
             "provider": "mapillary",
-            "rate_limit_qps": 1.5,
             "max_fetch_retries": 4,
             "min_capture_year": 2020,
             "render_mode": "human",

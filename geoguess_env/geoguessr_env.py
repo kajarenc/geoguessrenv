@@ -38,8 +38,6 @@ logger = logging.getLogger(__name__)
 # Constants
 MAX_GRAPH_PREPARATION_ATTEMPTS = 5
 MAX_GEOFENCE_SAMPLE_ATTEMPTS = 10
-DEGREES_IN_CIRCLE = 360.0
-EARTH_RADIUS_METERS = 6371000.0
 
 
 class GeoGuessrEnv(gym.Env):
@@ -219,10 +217,9 @@ class GeoGuessrEnv(gym.Env):
     def _prepare_graph_with_retries(self) -> PanoramaGraphResult:
         """Load the panorama graph, retrying when the root panorama is unavailable."""
 
-        max_attempts = 5
         last_unavailable_error: RootPanoramaUnavailableError | None = None
 
-        for attempt in range(max_attempts):
+        for attempt in range(MAX_GRAPH_PREPARATION_ATTEMPTS):
             lat, lon = self._select_start_coordinates(attempt)
             lat = round(lat, 6)
             lon = round(lon, 6)
@@ -236,7 +233,7 @@ class GeoGuessrEnv(gym.Env):
                 logger.warning(
                     "Attempt %d/%d: Root panorama unavailable at (%f, %f): %s",
                     attempt + 1,
-                    max_attempts,
+                    MAX_GRAPH_PREPARATION_ATTEMPTS,
                     lat,
                     lon,
                     exc,
@@ -262,11 +259,11 @@ class GeoGuessrEnv(gym.Env):
 
         if last_unavailable_error is not None:
             raise ValueError(
-                f"Failed to find valid panorama location after {max_attempts} attempts"
+                f"Failed to find valid panorama location after {MAX_GRAPH_PREPARATION_ATTEMPTS} attempts"
             ) from last_unavailable_error
 
         raise ValueError(
-            f"Failed to prepare panorama graph after {max_attempts} attempts"
+            f"Failed to prepare panorama graph after {MAX_GRAPH_PREPARATION_ATTEMPTS} attempts"
         )
 
     def _select_start_coordinates(self, attempt: int) -> tuple[float, float]:
@@ -525,10 +522,7 @@ class GeoGuessrEnv(gym.Env):
 
     def _sample_valid_coordinates_from_geofence(self) -> tuple[float, float]:
         """Sample geofence coordinates with retries until a cached panorama is found."""
-
-        max_attempts = 10
-
-        for attempt in range(max_attempts):
+        for attempt in range(MAX_GEOFENCE_SAMPLE_ATTEMPTS):
             lat, lon = self._sample_from_geofence()
             rounded_lat = round(lat, 6)
             rounded_lon = round(lon, 6)
@@ -555,7 +549,7 @@ class GeoGuessrEnv(gym.Env):
                 )
 
         raise ValueError(
-            f"Could not find valid coordinates with panoramas after {max_attempts} attempts"
+            f"Could not find valid coordinates with panoramas after {MAX_GEOFENCE_SAMPLE_ATTEMPTS} attempts"
         )
 
     # --- Helpers ---

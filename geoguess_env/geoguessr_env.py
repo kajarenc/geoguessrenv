@@ -134,25 +134,19 @@ class GeoGuessrEnv(gym.Env):
         )
         self.observation_space = observation_space
 
-        click_space = spaces.Box(
-            low=np.array([0, 0], dtype=np.int32),
-            high=np.array([self._image_width, self._image_height], dtype=np.int32),
-            shape=(2,),
-            dtype=np.int32,
-        )
-        answer_space = spaces.Box(
-            low=np.array([-90.0, -180.0], dtype=np.float32),
-            high=np.array([90.0, 180.0], dtype=np.float32),
-            shape=(2,),
+        # Unified continuous action space for RL compatibility
+        # action[0]: action type selector (< 0.5 = click, >= 0.5 = answer)
+        # action[1]: first parameter normalized to [0, 1]
+        #   - For click: x coordinate (denormalize: x = action[1] * image_width)
+        #   - For answer: latitude (denormalize: lat = action[1] * 180 - 90)
+        # action[2]: second parameter normalized to [0, 1]
+        #   - For click: y coordinate (denormalize: y = action[2] * image_height)
+        #   - For answer: longitude (denormalize: lon = action[2] * 360 - 180)
+        action_space = spaces.Box(
+            low=np.array([0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0], dtype=np.float32),
+            shape=(3,),
             dtype=np.float32,
-        )
-
-        action_space = spaces.Dict(
-            {
-                "op": spaces.Discrete(2),
-                "click": click_space,
-                "answer": answer_space,
-            }
         )
         self.action_space = action_space
 
@@ -304,71 +298,154 @@ class GeoGuessrEnv(gym.Env):
         return 0.0
 
     def step(
-        self, action: Mapping[str, Any] | str
+        self, action: np.ndarray | list | Mapping[str, Any] | str
     ) -> tuple[Observation, float, bool, bool, EnvInfo]:
-        """Execute one environment step using a click or answer action."""
+        """Execute one environment step using a click or answer action.
 
+        The environment now uses a unified continuous action space:
+        - action[0]: action type (< 0.5 = click, >= 0.5 = answer)
+        - action[1]: first parameter (normalized to [0, 1])
+        - action[2]: second parameter (normalized to [0, 1])
+
+        For backward compatibility, dict/string formats are still supported
+        via the legacy action parser.
+
+        Args:
+            action: Either a 3-element array (unified format) or dict/string (legacy)
+
+        Returns:
+            Tuple of (observation, reward, terminated, truncated, info)
+        """
         self._steps += 1
-
-        try:
-            op, values = self.action_parser.parse_action(action)
-        except Exception as exc:  # pragma: no cover - defensive guardrail
-            logger.warning("Action parsing failed (%s); using fallback parser", exc)
-            op, values = self.action_parser.parse_with_fallback(action)
 
         terminated = False
         truncated = False
         reward = 0.0
 
-        if op == 0:
-            x, y = values
-            logger.debug("Handling click at (%.2f, %.2f)", x, y)
-            self._handle_click(x, y)
-        elif op == 1:
-            guess_lat, guess_lon = values
-            reward = float(
-                GeometryUtils.compute_answer_reward(
+        # Parse action based on format
+        if isinstance(action, (np.ndarray, list, tuple)):
+            # Unified continuous action format
+            action_array = np.asarray(action, dtype=np.float32)
+
+            if action_array.shape != (3,):
+                logger.warning(
+                    "Invalid action shape %s, expected (3,). Using center click.",
+                    action_array.shape,
+                )
+                action_array = np.array([0.25, 0.5, 0.5], dtype=np.float32)
+
+            action_type_val = float(action_array[0])
+            param1 = float(action_array[1])
+            param2 = float(action_array[2])
+
+            if action_type_val < 0.5:
+                # Click action
+                x = int(np.clip(param1 * self._image_width, 0, self._image_width - 1))
+                y = int(
+                    np.clip(param2 * self._image_height, 0, self._image_height - 1)
+                )
+                logger.debug("Handling click at (%d, %d)", x, y)
+                self._handle_click(x, y)
+            else:
+                # Answer action
+                guess_lat = np.clip(param1 * 180.0 - 90.0, -90.0, 90.0)
+                guess_lon = np.clip(param2 * 360.0 - 180.0, -180.0, 180.0)
+                reward = float(
+                    GeometryUtils.compute_answer_reward(
+                        guess_lat,
+                        guess_lon,
+                        self.current_lat or 0.0,
+                        self.current_lon or 0.0,
+                    )
+                )
+                logger.debug(
+                    "Answer submitted lat=%.6f lon=%.6f reward=%.4f",
                     guess_lat,
                     guess_lon,
-                    self.current_lat or 0.0,
-                    self.current_lon or 0.0,
+                    reward,
                 )
-            )
-            logger.debug(
-                "Answer submitted lat=%.6f lon=%.6f reward=%.4f",
-                guess_lat,
-                guess_lon,
-                reward,
-            )
-            terminated = True
+                terminated = True
+
+                # Add answer info
+                obs = self._get_observation()
+                info = self._get_info()
+                info["guess_lat"] = float(guess_lat)
+                info["guess_lon"] = float(guess_lon)
+
+                if self.current_lat is not None and self.current_lon is not None:
+                    info["distance_km"] = float(
+                        GeometryUtils.haversine_distance(
+                            self.current_lat,
+                            self.current_lon,
+                            guess_lat,
+                            guess_lon,
+                        )
+                    )
+                else:
+                    info["distance_km"] = float("inf")
+
+                info["score"] = float(reward)
+
         else:
-            logger.error("Received unsupported op code: %s", op)
+            # Legacy dict/string format - use action parser for backward compatibility
+            logger.debug("Using legacy action format (dict/string)")
+            try:
+                op, values = self.action_parser.parse_action(action)
+            except Exception as exc:  # pragma: no cover - defensive guardrail
+                logger.warning("Action parsing failed (%s); using fallback parser", exc)
+                op, values = self.action_parser.parse_with_fallback(action)
+
+            if op == 0:
+                x, y = values
+                logger.debug("Handling click at (%.2f, %.2f)", x, y)
+                self._handle_click(x, y)
+            elif op == 1:
+                guess_lat, guess_lon = values
+                reward = float(
+                    GeometryUtils.compute_answer_reward(
+                        guess_lat,
+                        guess_lon,
+                        self.current_lat or 0.0,
+                        self.current_lon or 0.0,
+                    )
+                )
+                logger.debug(
+                    "Answer submitted lat=%.6f lon=%.6f reward=%.4f",
+                    guess_lat,
+                    guess_lon,
+                    reward,
+                )
+                terminated = True
+
+                # Add answer info
+                obs = self._get_observation()
+                info = self._get_info()
+                info["guess_lat"] = float(guess_lat)
+                info["guess_lon"] = float(guess_lon)
+
+                if self.current_lat is not None and self.current_lon is not None:
+                    info["distance_km"] = float(
+                        GeometryUtils.haversine_distance(
+                            self.current_lat,
+                            self.current_lon,
+                            guess_lat,
+                            guess_lon,
+                        )
+                    )
+                else:
+                    info["distance_km"] = float("inf")
+
+                info["score"] = float(reward)
+            else:
+                logger.error("Received unsupported op code: %s", op)
 
         if not terminated and self._steps >= self.config.max_steps:
             truncated = True
 
-        obs = self._get_observation()
-        info = self._get_info()
-
-        if op == 1:
-            guess_lat = float(values[0])
-            guess_lon = float(values[1])
-            info["guess_lat"] = guess_lat
-            info["guess_lon"] = guess_lon
-
-            if self.current_lat is not None and self.current_lon is not None:
-                info["distance_km"] = float(
-                    GeometryUtils.haversine_distance(
-                        self.current_lat,
-                        self.current_lon,
-                        guess_lat,
-                        guess_lon,
-                    )
-                )
-            else:
-                info["distance_km"] = float("inf")
-
-            info["score"] = float(reward)
+        # Get observation and info if not already set (for click actions)
+        if not terminated:
+            obs = self._get_observation()
+            info = self._get_info()
 
         return obs, reward, terminated, truncated, info
 

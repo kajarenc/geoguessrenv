@@ -147,3 +147,69 @@ Return exactly ONE JSON object in the schema above, with no extra text."""
     def _safe_center_click(self, image_width: int, image_height: int) -> Dict:
         """Return a safe center click action."""
         return {"op": "click", "value": [image_width // 2, image_height // 2]}
+
+    def action_to_unified(
+        self, action_dict: Dict, image_width: int = 1024, image_height: int = 512
+    ) -> np.ndarray:
+        """
+        Convert dict action format to unified continuous array format.
+
+        This is useful when you want to convert VLM actions to the new
+        unified format for compatibility with RL algorithms.
+
+        Args:
+            action_dict: Action in dict format {"op": "click"/"answer", "value": [...]}
+            image_width: Image width for normalization
+            image_height: Image height for normalization
+
+        Returns:
+            Unified action array [action_type, param1, param2] in [0, 1] range
+        """
+        op = action_dict.get("op", "click")
+        value = action_dict.get("value", [image_width // 2, image_height // 2])
+
+        if op == "click":
+            x, y = float(value[0]), float(value[1])
+            # Normalize to [0, 1]
+            x_norm = np.clip(x / image_width, 0.0, 1.0)
+            y_norm = np.clip(y / image_height, 0.0, 1.0)
+            # Use 0.25 for action_type (< 0.5 means click)
+            return np.array([0.25, x_norm, y_norm], dtype=np.float32)
+        else:  # answer
+            lat, lon = float(value[0]), float(value[1])
+            # Normalize to [0, 1]
+            lat_norm = (np.clip(lat, -90.0, 90.0) + 90.0) / 180.0
+            lon_norm = (np.clip(lon, -180.0, 180.0) + 180.0) / 360.0
+            # Use 0.75 for action_type (>= 0.5 means answer)
+            return np.array([0.75, lat_norm, lon_norm], dtype=np.float32)
+
+    def unified_to_action(
+        self, action_array: np.ndarray, image_width: int = 1024, image_height: int = 512
+    ) -> Dict:
+        """
+        Convert unified continuous array format to dict action format.
+
+        This is useful for interpreting RL algorithm outputs as human-readable actions.
+
+        Args:
+            action_array: Unified action [action_type, param1, param2] in [0, 1] range
+            image_width: Image width for denormalization
+            image_height: Image height for denormalization
+
+        Returns:
+            Action in dict format {"op": "click"/"answer", "value": [...]}
+        """
+        action_type_val = float(action_array[0])
+        param1 = float(action_array[1])
+        param2 = float(action_array[2])
+
+        if action_type_val < 0.5:
+            # Click action
+            x = int(np.clip(param1 * image_width, 0, image_width - 1))
+            y = int(np.clip(param2 * image_height, 0, image_height - 1))
+            return {"op": "click", "value": [x, y]}
+        else:
+            # Answer action
+            lat = np.clip(param1 * 180.0 - 90.0, -90.0, 90.0)
+            lon = np.clip(param2 * 360.0 - 180.0, -180.0, 180.0)
+            return {"op": "answer", "value": [float(lat), float(lon)]}

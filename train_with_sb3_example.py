@@ -99,7 +99,7 @@ def main():
     # Create vectorized environment (required for SB3)
     print("Creating vectorized environment...")
     vec_env = DummyVecEnv([make_env(i) for i in range(1)])
-    print(f"✓ Vectorized environment created with 1 worker")
+    print("✓ Vectorized environment created with 1 worker")
     print()
 
     # Verify action space

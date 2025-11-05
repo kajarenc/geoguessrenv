@@ -76,6 +76,9 @@ def test_action_space_is_box():
 
     # Check action space type and shape
     assert hasattr(env, "action_space")
+    from gymnasium.spaces import Box
+
+    assert isinstance(env.action_space, Box), "Action space should be Box"
     assert env.action_space.shape == (3,)
     assert env.action_space.dtype == np.float32
 

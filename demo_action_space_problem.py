@@ -6,9 +6,8 @@ This script shows exactly how the current action space definition
 breaks compatibility with RL libraries and causes silent failures.
 """
 
-import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
+from gymnasium import spaces
 
 
 def demonstrate_problem():
@@ -25,21 +24,23 @@ def demonstrate_problem():
     print("STEP 1: Current Action Space Definition")
     print("-" * 80)
 
-    action_space = spaces.Dict({
-        'op': spaces.Discrete(2),
-        'click': spaces.Box(
-            low=np.array([0, 0], dtype=np.int32),
-            high=np.array([1023, 511], dtype=np.int32),
-            shape=(2,),
-            dtype=np.int32,
-        ),
-        'answer': spaces.Box(
-            low=np.array([-90.0, -180.0], dtype=np.float32),
-            high=np.array([90.0, 180.0], dtype=np.float32),
-            shape=(2,),
-            dtype=np.float32,
-        ),
-    })
+    action_space = spaces.Dict(
+        {
+            "op": spaces.Discrete(2),
+            "click": spaces.Box(
+                low=np.array([0, 0], dtype=np.int32),
+                high=np.array([1023, 511], dtype=np.int32),
+                shape=(2,),
+                dtype=np.int32,
+            ),
+            "answer": spaces.Box(
+                low=np.array([-90.0, -180.0], dtype=np.float32),
+                high=np.array([90.0, 180.0], dtype=np.float32),
+                shape=(2,),
+                dtype=np.float32,
+            ),
+        }
+    )
 
     print(f"Action Space: {action_space}")
     print()
@@ -55,7 +56,7 @@ def demonstrate_problem():
 
     for i in range(3):
         sample = action_space.sample()
-        print(f"Sample {i+1}: {sample}")
+        print(f"Sample {i + 1}: {sample}")
 
     print()
     print("Notice: ALL samples have op, click, AND answer keys!")
@@ -97,9 +98,9 @@ def demonstrate_problem():
         sample = action_space.sample()
         try:
             result = mock_parse_action(sample)
-            print(f"✓ Sample {i+1}: Successfully parsed as {result}")
+            print(f"✓ Sample {i + 1}: Successfully parsed as {result}")
         except Exception as e:
-            print(f"✗ Sample {i+1}: FAILED - {type(e).__name__}: {e}")
+            print(f"✗ Sample {i + 1}: FAILED - {type(e).__name__}: {e}")
 
     print()
     print("Result: 100% failure rate on parsing!")
@@ -127,7 +128,7 @@ def demonstrate_problem():
     for i in range(3):
         sample = action_space.sample()
         op, values = mock_parse_with_fallback(sample)
-        print(f"Sample {i+1}:")
+        print(f"Sample {i + 1}:")
         print(f"  Input:    {sample}")
         print(f"  Fallback: op='{op}', values={values}")
         print()
@@ -182,7 +183,7 @@ def demonstrate_problem():
     for i in range(5):
         sample = correct_action_space.sample()
         parsed = parse_unified_action(sample)
-        print(f"Sample {i+1}:")
+        print(f"Sample {i + 1}:")
         print(f"  Raw:    {sample}")
         print(f"  Parsed: {parsed}")
         print()

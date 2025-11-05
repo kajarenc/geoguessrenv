@@ -129,7 +129,9 @@ def main() -> None:
         print(f"  Terminated: {terminated}, Truncated: {truncated}")
 
         if terminated:
-            print(f"  Guess: lat={info.get('guess_lat', 0):.6f}, lon={info.get('guess_lon', 0):.6f}")
+            print(
+                f"  Guess: lat={info.get('guess_lat', 0):.6f}, lon={info.get('guess_lon', 0):.6f}"
+            )
             print(f"  Distance: {info.get('distance_km', 0):.2f} km")
             print(f"  Final score: {info.get('score', 0):.4f}")
 

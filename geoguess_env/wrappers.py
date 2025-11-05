@@ -114,7 +114,11 @@ class NormalizeObservation(gym.ObservationWrapper):
         super().__init__(env)
 
         # Update observation space to float32
-        old_image_space = env.observation_space["image"]
+        # Type assertion: we know the observation space is Dict
+        assert isinstance(env.observation_space, spaces.Dict), (
+            "Observation space must be Dict"
+        )
+        old_image_space = env.observation_space["image"]  # type: ignore[index]
         self.observation_space = spaces.Dict(
             {
                 "image": spaces.Box(
@@ -161,7 +165,11 @@ class FlattenObservation(gym.ObservationWrapper):
         super().__init__(env)
 
         # Update observation space to flattened
-        old_image_space = env.observation_space["image"]
+        # Type assertion: we know the observation space is Dict
+        assert isinstance(env.observation_space, spaces.Dict), (
+            "Observation space must be Dict"
+        )
+        old_image_space = env.observation_space["image"]  # type: ignore[index]
         flat_dim = int(np.prod(old_image_space.shape))
 
         self.observation_space = spaces.Dict(
@@ -210,15 +218,15 @@ class GrayscaleObservation(gym.ObservationWrapper):
         super().__init__(env)
 
         # Update observation space to grayscale
-        old_image_space = env.observation_space["image"]
+        # Type assertion: we know the observation space is Dict
+        assert isinstance(env.observation_space, spaces.Dict), (
+            "Observation space must be Dict"
+        )
+        old_image_space = env.observation_space["image"]  # type: ignore[index]
         h, w, _ = old_image_space.shape
 
         self.observation_space = spaces.Dict(
-            {
-                "image": spaces.Box(
-                    low=0, high=255, shape=(h, w, 1), dtype=np.uint8
-                )
-            }
+            {"image": spaces.Box(low=0, high=255, shape=(h, w, 1), dtype=np.uint8)}
         )
 
     def observation(self, obs: dict) -> dict:

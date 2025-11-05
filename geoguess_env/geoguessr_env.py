@@ -341,9 +341,7 @@ class GeoGuessrEnv(gym.Env):
             if action_type_val < 0.5:
                 # Click action
                 x = int(np.clip(param1 * self._image_width, 0, self._image_width - 1))
-                y = int(
-                    np.clip(param2 * self._image_height, 0, self._image_height - 1)
-                )
+                y = int(np.clip(param2 * self._image_height, 0, self._image_height - 1))
                 logger.debug("Handling click at (%d, %d)", x, y)
                 self._handle_click(x, y)
             else:
